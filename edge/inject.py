@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+
 BOOT_BLOCK = """<script id="cadence-sdk-boot">
 (function () {
   if (window.__CADENCE_SDK_LOADED) return;
@@ -13,6 +16,32 @@ BOOT_BLOCK = """<script id="cadence-sdk-boot">
   window.setInterval(send, 5000);
 })();
 </script>"""
+
+
+def script_bodies(sdk_source: str) -> list[bytes]:
+    """The exact content of each injected <script> element, as inject() emits it.
+
+    A CSP hash covers the bytes between the tags — including the newlines
+    around the SDK source and inside the boot block. Derived from the same
+    constants inject() uses, so the two cannot drift; the test suite pins
+    them together by hashing real inject() output.
+    """
+    boot_inner = BOOT_BLOCK.encode("utf-8")
+    open_end = boot_inner.index(b">") + 1
+    close_start = boot_inner.rindex(b"</script>")
+    return [
+        b"\n" + sdk_source.encode("utf-8") + b"\n",
+        boot_inner[open_end:close_start],
+    ]
+
+
+def csp_hashes(sdk_source: str) -> list[str]:
+    """sha256-... CSP hash tokens for both injected scripts, in order."""
+    tokens = []
+    for body in script_bodies(sdk_source):
+        digest = hashlib.sha256(body).digest()
+        tokens.append("sha256-" + base64.b64encode(digest).decode("ascii"))
+    return tokens
 
 
 def is_html(content_type: str | None) -> bool:

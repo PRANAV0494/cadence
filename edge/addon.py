@@ -16,7 +16,7 @@ from pathlib import Path
 # modules import regardless of where mitmproxy was launched from.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from inject import inject, is_html  # noqa: E402
+from inject import csp_hashes, inject, is_html  # noqa: E402
 from provenance import (  # noqa: E402
     SESSION_COOKIE,
     cap_session,
@@ -28,6 +28,7 @@ from provenance import (  # noqa: E402
 EDGE_DIR = Path(__file__).resolve().parent
 SDK_PATH = EDGE_DIR / "cadence-sdk.js"
 SDK_SOURCE = SDK_PATH.read_text(encoding="utf-8")
+SDK_HASHES = csp_hashes(SDK_SOURCE)
 
 TELEMETRY_PATH = "/__cadence/telemetry"
 
@@ -183,10 +184,45 @@ class CadenceAddon:
             response.content = new
             if "Content-Length" in response.headers:
                 del response.headers["Content-Length"]
+            self._allow_injected_scripts_in_csp(response)
         # Mint the session cookie only on first sight: telemetry and POSTs
         # from this browser then share one key even across keep-alive
         # reconnects or HTTP/2 stream splits. Never rotates an existing sid.
         _set_cookie_if_absent(response, flow)
+
+    def _allow_injected_scripts_in_csp(self, response) -> None:
+        """Append our script hashes to script-src so a strict CSP lets the
+        injected SDK run. Without this, a page with Content-Security-Policy
+        blocks the inline scripts, telemetry never starts, and provenance
+        is blind. No CSP header → nothing to extend.
+
+        Only script-src (or a default-src fallback) is touched, and only by
+        appending tokens — never removing the page's own restrictions.
+        """
+        csp = response.headers.get("Content-Security-Policy")
+        if not csp:
+            return
+        import re
+
+        directives = re.split(r"\s*;\s*", csp)
+        target = None
+        for i, d in enumerate(directives):
+            name = d.split(None, 1)[0].lower() if d.strip() else ""
+            if name == "script-src":
+                target = i
+                break
+            if name == "default-src" and target is None:
+                target = i
+        if target is None:
+            # A policy with neither script-src nor default-src cannot govern
+            # scripts; nothing to extend.
+            return
+        existing = directives[target]
+        additions = [h for h in SDK_HASHES if h not in existing]
+        if not additions:
+            return
+        directives[target] = existing.rstrip() + " " + " ".join(additions)
+        response.headers["Content-Security-Policy"] = "; ".join(directives)
 
 
 addons = [CadenceAddon()]
