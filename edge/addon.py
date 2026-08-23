@@ -16,6 +16,9 @@ from pathlib import Path
 # modules import regardless of where mitmproxy was launched from.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from automation import is_automated  # noqa: E402
+from drift import drift_signal  # noqa: E402
+from fusion import update  # noqa: E402
 from inject import csp_hashes, inject, is_html  # noqa: E402
 from provenance import (  # noqa: E402
     SESSION_COOKIE,
@@ -37,6 +40,13 @@ TELEMETRY_PATH = "/__cadence/telemetry"
 # the proxy-set __cadence_sid cookie when present, the TCP peer as fallback.
 # Capped per session (head dropped) by cap_session on every append.
 sessions: dict[str, list[dict]] = {}
+
+# session_key -> running SPRT log-likelihood ratio. The fusion walk's state.
+score: dict[str, float] = {}
+
+# session_key -> the walk's current terminal-or-not decision, updated at
+# telemetry ingest and read at request time.
+decisions: dict[str, str] = {}
 
 _session_counter = itertools.count(1)
 
@@ -104,12 +114,52 @@ def _add_set_cookie(response, sid: str) -> None:
 
 class CadenceAddon:
     def request(self, flow):
-        """Two responsibilities, in order: telemetry sink, provenance gate."""
+        """Three responsibilities, in order: telemetry sink, step-up check,
+        provenance gate."""
         path = flow.request.path.split("?")[0]
         if path == TELEMETRY_PATH:
             self._swallow_telemetry(flow)
             return
+        if self._maybe_step_up(flow):
+            return
         self._enforce_provenance(flow)
+
+    def _accumulate(self, key: str, events: list[dict]) -> None:
+        """Fold one telemetry round's detector verdicts into the SPRT walk."""
+        signals = {
+            "automation": is_automated(events),
+            "drift": (drift_signal(events) or {}).get("drift"),
+            "provenance": None,  # per-request, evaluated in the gate below
+        }
+        state = update(score.get(key, 0.0), signals)
+        score[key] = state["llr"]
+        decisions[key] = state["decision"]
+
+    def _maybe_step_up(self, flow) -> bool:
+        """401 + WWW-Authenticate (RFC 9470) when the fusion score says so.
+
+        The walk's evidence accumulates at telemetry ingest (_accumulate);
+        this check only READS the current decision. A 'step-up' decision is
+        answered locally with 401 and a challenge — never forwarded — and
+        stays in force for the session: evidence does not vanish, so only
+        a 'clean' decision (strong sustained honest evidence) clears it.
+        """
+        if decisions.get(_flow_session_key(flow)) != "step-up":
+            return False
+        from mitmproxy import http
+
+        flow.response = http.Response.make(
+            401,
+            b"cadence: step-up authentication required for this session.\n",
+            {
+                "Content-Type": "text/plain",
+                "WWW-Authenticate": (
+                    'Step-up realm="cadence", '
+                    'reason="behavioral score exceeded the step-up bound"'
+                ),
+            },
+        )
+        return True
 
     def _swallow_telemetry(self, flow):
         """Buffer telemetry under the session key; never forward it upstream.
@@ -138,6 +188,15 @@ class CadenceAddon:
         buffered = sessions.setdefault(key, [])
         buffered.extend(events)
         sessions[key] = cap_session(buffered)
+        # Detectors run HERE, once per round, on the freshly extended
+        # buffer — the only moment new evidence exists. Running them per
+        # page request instead re-evaluates the whole buffer every time and
+        # lets earlier evidence evaporate when the buffer's character
+        # changes (a second driver dilutes whole-stream automation below
+        # its threshold, silently un-firing a signal the walk already
+        # counted). SPRT requires evidence to accumulate monotonically.
+        if events:
+            self._accumulate(key, sessions[key])
         # A response set in the request hook short-circuits the proxy:
         # mitmproxy answers locally and nothing is forwarded upstream.
         from mitmproxy import http
