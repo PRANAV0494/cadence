@@ -89,8 +89,12 @@ jobs:
         run: |
           # Config must come from the environment. auth.py deliberately has no
           # defaults so it fails fast rather than signing with a shared key.
+          # The bracket in 'produc[t]ion' stops this pattern matching its own
+          # text in this file. Excluding the workflow instead would create a
+          # blind spot: a real secret committed to a workflow is exactly the
+          # kind that leaks, since Actions logs are public on public repos.
           hits=$(git grep -nIE \
-            'change-me-in-production|[A-Za-z0-9_]*(PASSWORD|SECRET|TOKEN|API_KEY)[A-Za-z0-9_]*[[:space:]]*=[[:space:]]*"[^"]{8,}"|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----' \
+            'change-me-in-produc[t]ion|[A-Za-z0-9_]*(PASSWORD|SECRET|TOKEN|API_KEY)[A-Za-z0-9_]*[[:space:]]*=[[:space:]]*"[^"]{8,}"|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----' \
             -- ':!docs/*' ':!CONTRIBUTING.md' ':!MANIFEST.md' ':!notebooks/*' ':!*.ipynb' || true)
           if [ -n "$hits" ]; then
             echo "::error::Possible hardcoded credential:"
