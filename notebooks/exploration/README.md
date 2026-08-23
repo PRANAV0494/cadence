@@ -12,7 +12,7 @@ Cell 20 computes:
 ```python
 iso_eers = results_df['EER'].values
 svm_eers = iso_eers * 1.1          # placeholder for comparison
-t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # <!--!retracted-->→ 4.689e-21<!--/-->
+t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # (retracted — see below)
 ```
 
 This t-tests a vector against **itself scaled by 1.1**. The resulting <!--!retracted-->`p = 4.7e-21`<!--/--> is an artifact of
@@ -31,7 +31,7 @@ behaviour. Measured directly from the source export:
 
 | Group | n | median `mean_dwell_time` | % negative |
 |---|---|---|---|
-| human | 293 | **−285.5 ms** | **85.0%** |
+| human | 293 | **<!--@legacy_export_median_dwell_ms-->−285.5<!--/--> ms** | **<!--@legacy_export_negative_dwell_fraction-->85.0%<!--/-->** |
 | bot_synthetic | 300 | +67.9 ms | 0.0% |
 
 Dwell time cannot be negative. The cause is in the capture SDK (`edge/reference/capture.js.BUGGY`):

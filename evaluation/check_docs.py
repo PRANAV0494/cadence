@@ -54,7 +54,9 @@ RESULTS = ROOT / "evaluation" / "results.json"
 # Every markdown file is scanned. A hardcoded list is how the retracted p-value
 # survived in docs/ while the checker looked only at three other files.
 DOC_GLOB = "**/*.md"
-DOC_EXCLUDE_DIRS = {".git", "node_modules", "reference", "tests/legacy"}
+# Matched against any path segment, so nested reference/ dirs are excluded too.
+DOC_EXCLUDE_PARTS = {".git", "node_modules", "reference"}
+DOC_EXCLUDE_PREFIXES = ("tests/legacy/",)
 
 # <!--@key-->  shown text  <!--/-->
 CLAIM = re.compile(r"<!--@([A-Za-z0-9_]+)-->(.*?)<!--/-->", re.DOTALL)
@@ -86,7 +88,9 @@ def load_docs(root: Path = ROOT) -> dict[str, str]:
     docs: dict[str, str] = {}
     for path in sorted(root.glob(DOC_GLOB)):
         rel = path.relative_to(root).as_posix()
-        if any(rel == d or rel.startswith(d + "/") for d in DOC_EXCLUDE_DIRS):
+        if set(Path(rel).parts) & DOC_EXCLUDE_PARTS:
+            continue
+        if rel.startswith(DOC_EXCLUDE_PREFIXES):
             continue
         docs[rel] = path.read_text(encoding="utf-8")
     return docs
@@ -118,18 +122,32 @@ def check_provenance(results: dict, root: Path = ROOT) -> list[str]:
     return problems
 
 
-def _shown_number(text: str) -> tuple[float, int] | None:
-    """Return (value, number of decimals displayed) for the number in `text`."""
+# Characters that change a number's value if they sit just outside a marker.
+# Leading: '9' before 0.1367 renders 90.1367; '-' flips the sign; '1.' makes
+# 0.1367 into 1.0.1367. A bare '.' cannot extend a number leftwards.
+SMUGGLE_BEFORE = re.compile(r"(?:[\d+\-−]|\d\.)$")
+# Trailing: more digits, a decimal point *followed by* a digit, an exponent, or
+# a percent sign. A lone '.' is sentence punctuation, not smuggling.
+SMUGGLE_AFTER = re.compile(r"^(?:\d|\.\d|[eE][-+]?\d|%)")
+
+
+def _shown_number(text: str) -> tuple[float, int, bool] | None:
+    """
+    Return (value, decimals displayed, is_scientific) for the number in `text`.
+
+    `decimals` drives rounding-aware comparison. It is meaningless for
+    e-notation — round(1.23e-05, 0) is 0.0, which would fail every scientific
+    claim even when it exactly matches — so that case is flagged and compared
+    by relative tolerance instead.
+    """
     cleaned = text.strip().replace(",", "").replace("−", "-").replace("**", "")
     m = re.search(r"-?\d*\.?\d+(?:[eE][-+]?\d+)?", cleaned)
     if not m:
         return None
     literal = m.group()
-    if "." in literal and "e" not in literal.lower():
-        decimals = len(literal.split(".")[1])
-    else:
-        decimals = 0
-    return float(literal), decimals
+    scientific = "e" in literal.lower()
+    decimals = len(literal.split(".")[1]) if "." in literal and not scientific else 0
+    return float(literal), decimals, scientific
 
 
 def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
@@ -166,9 +184,17 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
                 problems.append(f"{rel}:{line}: claims '{key}', not in results.json")
                 continue
 
-            # Digits immediately after the closer render but are not verified.
+            # Characters just outside the markers render but are not verified.
+            # Both sides matter: '9' before, or '27' / 'e-21' / '%' after.
+            # Two characters, so a digit-then-dot prefix like "1." is visible.
+            leading = text[max(0, match.start() - 2) : match.start()]
             trailing = text[match.end() : match.end() + 12]
-            if re.match(r"^[\d.]", trailing):
+            if SMUGGLE_BEFORE.search(leading):
+                problems.append(
+                    f"{rel}:{line}: claim '{key}' is preceded by {leading!r}. "
+                    f"The whole displayed number must be inside the markers."
+                )
+            if SMUGGLE_AFTER.match(trailing):
                 problems.append(
                     f"{rel}:{line}: claim '{key}' is followed by {trailing[:6]!r}. "
                     f"The whole displayed number must be inside the markers."
@@ -178,16 +204,27 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
             if parsed is None:
                 problems.append(f"{rel}:{line}: claim '{key}' has no number in {shown!r}")
                 continue
-            found, decimals = parsed
+            found, decimals, scientific = parsed
 
             declared = float(results[key]["value"])
-            candidates = {declared}
-            if results[key].get("unit") == "percent":
-                candidates |= {declared / 100, declared * 100}
 
-            # The document may round the declared value; it may not disagree.
+            if results[key].get("unit") == "percent":
+                # A percent result may be written 85% or 0.85, but the form must
+                # match the display: '0.85%' is wrong by 100x and must not pass.
+                as_percent = "%" in shown or "percent" in shown.lower()
+                candidates = {declared} if as_percent else {declared / 100}
+            else:
+                candidates = {declared}
+
             tol = max(1e-12, abs(found) * 1e-9)
-            if not any(abs(round(c, decimals) - found) <= tol for c in candidates):
+            if scientific:
+                # Rounding is meaningless here; compare by relative tolerance.
+                ok = any(abs(c - found) <= max(tol, abs(c) * 1e-9) for c in candidates)
+            else:
+                # The document may round the declared value; it may not disagree.
+                ok = any(abs(round(c, decimals) - found) <= tol for c in candidates)
+
+            if not ok:
                 problems.append(
                     f"{rel}:{line}: claim '{key}' shows {found}, "
                     f"results.json says {declared}"

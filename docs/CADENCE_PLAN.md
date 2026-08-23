@@ -141,7 +141,7 @@ by `key_index`, pairs every keydown with the **previous** character's keyup.
 
 | Group | n | median mean_dwell | % negative |
 |---|---|---|---|
-| human | 293 | **−285.5 ms** | **85.0%** |
+| human | 293 | **<!--@legacy_export_median_dwell_ms-->−285.5<!--/--> ms** | **<!--@legacy_export_negative_dwell_fraction-->85.0%<!--/-->** |
 | bot_synthetic | 300 | +67.9 ms | 0.0% |
 
 Dwell time is physically impossible to be negative. The two classes are perfectly separable by
@@ -165,12 +165,12 @@ plausible), digraph, pause, and error features. Dwell needs re-collection.
 ```python
 iso_eers = results_df['EER'].values
 svm_eers = iso_eers * 1.1          # placeholder for comparison
-t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → <!--!retracted-->4.689e-21<!--/-->
+t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → (retracted — see below)
 ```
 
 That t-tests a vector against itself scaled by 1.1. The p-value is arithmetic, not evidence.
 **The real test** is in `Final_Keystroke_Dynamics_Full.ipynb` cell 13: IF vs OCSVM,
-**t = 3.1127, p = 0.0031** — a perfectly respectable result. Use that one everywhere.
+**t = <!--@cmu_if_vs_ocsvm_t_statistic-->3.1127<!--/-->, p = <!--@cmu_if_vs_ocsvm_p_value-->0.0031<!--/-->** — a perfectly respectable result. Use that one everywhere.
 Also drop "vs 0.51 global model": EER 0.5065 is chance, so beating it is not a finding.
 
 ---
@@ -207,8 +207,8 @@ implementation"**, never "novel idea".
 making the system *evaluable*.
 
 **7. Per-user keystroke models — not novel, and currently below baseline.** Your best CMU result is
-LOF at 0.1367. Killourhy & Maxion (DSN 2009), on *the same 51 subjects and the same CSV you have*,
-report scaled Manhattan at **0.0962**. You are ~40% worse than a 2009 baseline. Report as a
+LOF at <!--@cmu_lof_eer-->0.1367<!--/-->. Killourhy & Maxion (DSN 2009), on *the same 51 subjects and the same CSV you have*,
+report scaled Manhattan at **<!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->**. You are ~40% worse than a 2009 baseline. Report as a
 reproduction with a known gap, never as a result.
 
 **8. The 6-dataset IDS zoo and "SHAP explanations" — zero novelty, and the SHAP claim isn't true.**
@@ -331,7 +331,7 @@ cadence/
 
 **README must contain, in this order:** (1) the 90-second demo GIF above the fold; (2) one paragraph
 stating the threat model precisely; (3) a results table **with confidence intervals and sample counts
-in every row**; (4) **a baseline row you lose to** — scaled Manhattan 0.0962 next to your 0.1367;
+in every row**; (4) **a baseline row you lose to** — scaled Manhattan <!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/--> next to your <!--@cmu_lof_eer-->0.1367<!--/-->;
 (5) a **Limitations section placed above Installation** (placement is the signal); (6) the
 leave-one-agent-out number as the headline, not in-distribution accuracy; (7) exact reproduction
 commands with pinned deps and seeds; (8) ethics/consent statement; (9) a prior-art table with a

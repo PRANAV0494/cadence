@@ -149,7 +149,7 @@ ke *pehle* hota hai, keyup pe *baad* mein. Isliye `features.py::_parse_events`, 
 
 | Group | n | median mean_dwell | % negative |
 |---|---|---|---|
-| human | 293 | **−285.5 ms** | **85.0%** |
+| human | 293 | **<!--@legacy_export_median_dwell_ms-->−285.5<!--/--> ms** | **<!--@legacy_export_negative_dwell_fraction-->85.0%<!--/-->** |
 | bot_synthetic | 300 | +67.9 ms | 0.0% |
 
 Dwell time physically negative ho hi nahi sakta. Dono classes `dwell < 0` se perfectly alag ho jaati
@@ -174,12 +174,12 @@ bugs nahi pakadte.**
 ```python
 iso_eers = results_df['EER'].values
 svm_eers = iso_eers * 1.1          # placeholder for comparison
-t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → <!--!retracted-->4.689e-21<!--/-->
+t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → (retracted — see below)
 ```
 
 Ye ek vector ka usi vector × 1.1 se t-test kar raha hai. Wo p-value evidence nahi, bas arithmetic hai.
 **Asli test** `Final_Keystroke_Dynamics_Full.ipynb` cell 13 mein hai: IF vs OCSVM,
-**t = 3.1127, p = 0.0031** — bilkul respectable result. Har jagah wahi use karo.
+**t = <!--@cmu_if_vs_ocsvm_t_statistic-->3.1127<!--/-->, p = <!--@cmu_if_vs_ocsvm_p_value-->0.0031<!--/-->** — bilkul respectable result. Har jagah wahi use karo.
 Aur "vs 0.51 global model" wali baat hata do: EER 0.5065 matlab chance level, usse better hona koi
 achievement nahi hai.
 
@@ -219,8 +219,8 @@ Claim karo **"first open-source implementation"**, kabhi "novel idea" nahi.
 hai ki isse system *evaluable* ban jaata hai.
 
 **7. Per-user keystroke models — naya nahi, aur abhi baseline se neeche hai.** CMU pe tumhara best LOF
-0.1367 hai. Killourhy & Maxion (DSN 2009), *usi 51 subjects aur usi CSV pe jo tumhare paas hai*,
-scaled Manhattan se **0.0962** report karte hain. Tum 2009 ke baseline se ~40% peeche ho. Isko
+<!--@cmu_lof_eer-->0.1367<!--/--> hai. Killourhy & Maxion (DSN 2009), *usi 51 subjects aur usi CSV pe jo tumhare paas hai*,
+scaled Manhattan se **<!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->** report karte hain. Tum 2009 ke baseline se ~40% peeche ho. Isko
 reproduction batao known gap ke saath, "result" kabhi mat bolo.
 
 **8. 6-dataset IDS zoo aur "SHAP explanations" — zero novelty, aur SHAP wali baat abhi sach nahi hai.**
@@ -347,8 +347,8 @@ cadence/
 
 **README mein isi order mein hona chahiye:** (1) 90-second demo GIF sabse upar; (2) ek paragraph
 jismein threat model exactly likha ho; (3) results table **har row mein confidence intervals aur
-sample counts ke saath**; (4) **ek baseline row jisse tum haar rahe ho** — scaled Manhattan 0.0962
-tumhare 0.1367 ke bagal mein; (5) **Limitations section Installation ke UPAR** (jagah hi signal hai);
+sample counts ke saath**; (4) **ek baseline row jisse tum haar rahe ho** — scaled Manhattan <!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->
+tumhare <!--@cmu_lof_eer-->0.1367<!--/--> ke bagal mein; (5) **Limitations section Installation ke UPAR** (jagah hi signal hai);
 (6) leave-one-agent-out number headline mein, in-distribution accuracy nahi; (7) exact reproduction
 commands, pinned deps, seeds; (8) ethics/consent statement; (9) prior-art table with
 "CADENCE kya alag karta hai" column; (10) ye kya **nahi** hai.

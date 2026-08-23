@@ -18,6 +18,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "evaluation"))
 
 from check_docs import (  # noqa: E402
+    DOC_EXCLUDE_PARTS,
+    DOC_EXCLUDE_PREFIXES,
     check_claims,
     check_provenance,
     load_docs,
@@ -78,6 +80,26 @@ def test_percent_units_accept_either_form():
     assert problems_for("<!--@pct-->0.85<!--/-->") == []
 
 
+def test_percent_form_must_match_the_displayed_form():
+    """
+    Accepting both 85 and 0.85 unconditionally let a claim be wrong by 100x.
+    '0.85%' displays a hundredth of the declared 85%.
+    """
+    assert problems_for("<!--@pct-->0.85%<!--/-->") != []
+    assert problems_for("<!--@pct-->85<!--/-->") != []
+
+
+def test_scientific_notation_compares_without_rounding():
+    """
+    round(1.23e-05, 0) is 0.0, so rounding-aware comparison rejected every
+    scientific claim, including exact matches. This repo traffics in p-values.
+    """
+    r = {"tiny_p": {"value": 1.23e-05, "n_rows": 10,
+                    "source": "README.md", "description": "p"}}
+    assert problems_for("p = <!--@tiny_p-->1.23e-05<!--/-->", r) == []
+    assert problems_for("p = <!--@tiny_p-->9.9e-03<!--/-->", r) != []
+
+
 # ── the defect this checker shipped with ───────────────────────
 
 def test_splitting_a_marker_to_smuggle_precision():
@@ -92,6 +114,41 @@ def test_splitting_a_marker_to_smuggle_precision():
 
 def test_trailing_decimal_point_also_caught():
     assert problems_for("t = <!--@t_stat-->3.11<!--/-->.5") != []
+
+
+def test_leading_digit_smuggles_from_the_other_side():
+    """9<!--@k-->0.1367<!--/--> renders 90.1367. The first fix only guarded
+    the trailing side; this is the same defect mirrored."""
+    out = problems_for("9<!--@t_stat-->3.1127<!--/-->")
+    assert len(out) == 1 and "preceded by" in out[0]
+
+
+def test_leading_minus_flips_a_verified_sign():
+    out = problems_for("-<!--@t_stat-->3.1127<!--/-->")
+    assert any("preceded by" in p for p in out)
+
+
+def test_leading_digit_dot_is_caught():
+    out = problems_for("1.<!--@t_stat-->3.1127<!--/-->")
+    assert any("preceded by" in p for p in out)
+
+
+def test_trailing_exponent_is_caught():
+    """3.11<!--/-->e-21 renders 3.11e-21; a digits-only guard misses 'e'."""
+    out = problems_for("t = <!--@t_stat-->3.1127<!--/-->e-21")
+    assert any("followed by" in p for p in out)
+
+
+def test_trailing_percent_is_caught():
+    out = problems_for("<!--@pct-->85<!--/-->%")
+    assert any("followed by" in p for p in out)
+
+
+def test_sentence_punctuation_is_not_smuggling():
+    """A lone '.' ends a sentence; only '.' followed by a digit extends a number."""
+    assert problems_for("The EER is <!--@t_stat-->3.1127<!--/-->. Next sentence.") == []
+    assert problems_for("<!--@t_stat-->3.1127<!--/-->, which is high") == []
+    assert problems_for("(<!--@t_stat-->3.1127<!--/-->)") == []
 
 
 def test_ordinary_text_after_a_marker_is_fine():
@@ -177,18 +234,28 @@ def test_people_unit_is_exempt_from_sample_count():
 
 # ── repository-wide scanning ───────────────────────────────────
 
+def test_nested_reference_dirs_are_excluded_too():
+    """Only top-level reference/ was excluded; edge/reference/ was not."""
+    assert "reference" in DOC_EXCLUDE_PARTS
+    scanned = load_docs(ROOT)
+    assert not any("reference" in Path(rel).parts for rel in scanned)
+
+
 def test_every_markdown_file_is_scanned():
     """
     A hardcoded file list is how the retracted p-value survived in docs/ while
     the checker looked at three other files.
     """
     scanned = load_docs(ROOT)
-    on_disk = {
-        p.relative_to(ROOT).as_posix()
-        for p in ROOT.rglob("*.md")
-        if not p.relative_to(ROOT).as_posix().startswith(
-            (".git/", "node_modules/", "reference/", "tests/legacy/")
+    def excluded(rel: str) -> bool:
+        return bool(set(Path(rel).parts) & DOC_EXCLUDE_PARTS) or rel.startswith(
+            DOC_EXCLUDE_PREFIXES
         )
+
+    on_disk = {
+        rel
+        for rel in (p.relative_to(ROOT).as_posix() for p in ROOT.rglob("*.md"))
+        if not excluded(rel)
     }
     assert on_disk <= set(scanned), f"unscanned: {on_disk - set(scanned)}"
     assert "docs/CADENCE_PLAN.md" in scanned

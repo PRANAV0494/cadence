@@ -54,7 +54,7 @@ Source folders are **untouched** — everything here is a copy. 13 MB total (vs 
 
 ## Data that needs handling before any commit
 
-`data/private/keystroke_export_20260513.csv` — 593 rows, real first-and-last names of 49 participants.
+`data/private/keystroke_export_20260513.csv` — 593 rows, real first-and-last names of <!--@participants_collected-->49<!--/--> participants.
 Gitignored, but pseudonymise to stable hashes and keep the mapping outside the repo. You need the
 consent/ethics note for the thesis anyway.
 
@@ -62,7 +62,7 @@ consent/ethics note for the thesis anyway.
 
 | Group | n | median mean_dwell | % negative |
 |---|---|---|---|
-| human | 293 | **−285.5 ms** | **85.0%** |
+| human | 293 | **<!--@legacy_export_median_dwell_ms-->−285.5<!--/--> ms** | **<!--@legacy_export_negative_dwell_fraction-->85.0%<!--/-->** |
 | bot_synthetic | 300 | +67.9 ms | 0.0% |
 
 Dwell time can't be negative. The two classes separate perfectly on `dwell < 0`, which is why the
