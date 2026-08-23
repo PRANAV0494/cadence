@@ -89,12 +89,37 @@ def _entropy(values: List[float], bins: int = 10) -> float:
 
 # ── Event Parsing ──────────────────────────────────────────────
 
+class CorruptEventStreamError(ValueError):
+    """Raised when an event stream cannot yield physically valid timings."""
+
+
+def _press_id(event: Dict[str, Any]) -> Any:
+    """
+    Stable identity of a single key press.
+
+    `seq` is assigned by the capture SDK: a monotonic counter stamped on keydown
+    and echoed on the matching keyup. It is the only field that survives key
+    rollover, where a fast typist presses the next key before releasing the
+    previous one, so presses overlap and cannot be paired by ordering.
+
+    Legacy streams carry `key_index` (a caret position) instead. That field is
+    not key identity — the caret sits before the inserted character on keydown
+    and after it on keyup — so pairing on it matches each press with the
+    *previous* character's release and yields negative dwell times. Such streams
+    are rejected in _parse_events rather than silently mis-parsed.
+    """
+    return event.get("seq")
+
+
 def _parse_events(events: List[Dict[str, Any]]) -> Tuple[
     List[Dict], List[Dict], List[float], List[float]
 ]:
     """
     Separate keydown/keyup events and compute per-key dwell times
     and flight times.
+
+    Raises CorruptEventStreamError if the stream predates the `seq` field or
+    produces negative dwell times, which are physically impossible.
     """
     keydowns = sorted(
         [e for e in events if e["event_type"] == "keydown" and not e.get("is_backspace") and not e.get("is_paste")],
@@ -105,23 +130,42 @@ def _parse_events(events: List[Dict[str, Any]]) -> Tuple[
         key=lambda e: e["timestamp"],
     )
 
-    # Match keydown → keyup by key_index for dwell time
-    up_map: Dict[int, float] = {}
+    if keydowns and all(_press_id(e) is None for e in keydowns):
+        raise CorruptEventStreamError(
+            "Event stream has no 'seq' field. Streams captured before the "
+            "key-identity fix paired keydowns with the previous character's "
+            "keyup; their dwell-derived features are unusable. Re-collect with "
+            "edge/cadence-sdk.js."
+        )
+
+    # Match keydown → keyup by press identity.
+    up_map: Dict[Any, float] = {}
     for e in keyups:
-        up_map[e["key_index"]] = e["timestamp"]
+        pid = _press_id(e)
+        if pid is not None:
+            up_map[pid] = e["timestamp"]
 
     dwell_times: List[float] = []
     for e in keydowns:
-        up_ts = up_map.get(e["key_index"])
+        up_ts = up_map.get(_press_id(e))
         if up_ts is not None:
             dwell_times.append(up_ts - e["timestamp"])
 
-    # Flight times: time between releasing key i and pressing key i+1
+    # Flight time: release of key i to press of key i+1. Negative under
+    # rollover, which is normal and informative — it measures overlap.
     flight_times: List[float] = []
     for i in range(len(keydowns) - 1):
-        up_ts = up_map.get(keydowns[i]["key_index"])
+        up_ts = up_map.get(_press_id(keydowns[i]))
         if up_ts is not None:
             flight_times.append(keydowns[i + 1]["timestamp"] - up_ts)
+
+    negative = [d for d in dwell_times if d < 0]
+    if negative:
+        raise CorruptEventStreamError(
+            f"{len(negative)} of {len(dwell_times)} dwell times are negative "
+            f"(min {min(negative):.1f} ms). A key cannot be released before it "
+            f"is pressed; the event stream is mis-paired."
+        )
 
     return keydowns, keyups, dwell_times, flight_times
 
