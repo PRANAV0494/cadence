@@ -165,7 +165,7 @@ plausible), digraph, pause, and error features. Dwell needs re-collection.
 ```python
 iso_eers = results_df['EER'].values
 svm_eers = iso_eers * 1.1          # placeholder for comparison
-t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → 4.689e-21
+t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → <!--!retracted-->4.689e-21<!--/-->
 ```
 
 That t-tests a vector against itself scaled by 1.1. The p-value is arithmetic, not evidence.
@@ -294,7 +294,7 @@ part and the thesis survives without it.
 
 - ❌ "Trained on 136 million keystrokes" → "a 10,000-participant subset of the Aalto corpus (~7.3M keystrokes)"
 - ❌ "State-of-the-art keystroke authentication" — you're 40% behind a 2009 baseline on CMU
-- ❌ "p = 4.7e-21" — artifact of `iso_eers * 1.1`
+- ❌ "p = <!--!retracted-->4.7e-21<!--/-->" — artifact of `iso_eers * 1.1`
 - ❌ "100% bot detection accuracy" — separable by construction, plus the dwell bug
 - ❌ "SHAP-explained predictions" — until SHAP is actually in the inference path
 - ❌ "Detects AI agents" → "detects unattested input provenance and behavioral discontinuity; evaluated against N agent frameworks with leave-one-out generalisation of X%"

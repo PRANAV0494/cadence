@@ -1,13 +1,17 @@
 {
   "_comment": [
-    "Authoritative measured results. Every number quoted in README.md must appear",
-    "here with matching value, or CI fails. See evaluation/check_docs.py.",
+    "Authoritative measured results. Every number quoted in any markdown file",
+    "must appear here with a matching value, or CI fails. See check_docs.py.",
     "",
-    "Each entry records provenance so a claim can be traced to the computation",
-    "that produced it. 'source' must point at a file in this repository.",
+    "Store numbers at FULL measured precision. Documents may display them",
+    "rounded; the checker rounds the declared value to the precision shown.",
+    "",
+    "'source' must resolve to a file in this repository, or carry an",
+    "'external:' prefix (published work) or 'private:' prefix (excluded from",
+    "version control).",
     "",
     "Do not edit a value here to make a document pass. Re-run the computation,",
-    "update this file from its output, then regenerate the document."
+    "update this file from its output, then update the documents."
   ],
   "results": {
     "cmu_baseline_scaled_manhattan_eer": {
@@ -15,73 +19,64 @@
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
       "source": "external: Killourhy & Maxion, DSN 2009",
-      "description": "Published baseline. We do not beat this yet.",
-      "verified": true
+      "description": "Published baseline. We do not beat this yet."
     },
     "cmu_lof_eer": {
       "value": 0.1367,
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
       "source": "notebooks/exploration/Final_Keystroke_Dynamics_Full.ipynb#cell-11",
-      "description": "Local Outlier Factor, per-user models.",
-      "verified": true
+      "description": "Local Outlier Factor, per-user models."
     },
     "cmu_ocsvm_eer": {
       "value": 0.1375,
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
       "source": "notebooks/exploration/Final_Keystroke_Dynamics_Full.ipynb#cell-11",
-      "description": "One-Class SVM, per-user models.",
-      "verified": true
+      "description": "One-Class SVM, per-user models."
     },
     "cmu_isolation_forest_eer": {
       "value": 0.1532,
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
       "source": "notebooks/exploration/Final_Keystroke_Dynamics_Full.ipynb#cell-11",
-      "description": "Isolation Forest, per-user models.",
-      "verified": true
+      "description": "Isolation Forest, per-user models."
     },
     "cmu_if_vs_ocsvm_t_statistic": {
-      "value": 3.11,
+      "value": 3.1127,
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
       "source": "notebooks/exploration/Final_Keystroke_Dynamics_Full.ipynb#cell-13",
-      "description": "Paired t-test, Isolation Forest vs One-Class SVM. Reported as 3.1127.",
-      "verified": true
+      "description": "Paired t-test, Isolation Forest vs One-Class SVM across 51 subjects."
     },
     "cmu_if_vs_ocsvm_p_value": {
-      "value": 0.003,
+      "value": 0.0031,
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
       "source": "notebooks/exploration/Final_Keystroke_Dynamics_Full.ipynb#cell-13",
-      "description": "Reported as 0.0031. NOT the 4.7e-21 from the Advanced notebook, which t-tested a vector against itself scaled by 1.1.",
-      "verified": true
+      "description": "Paired t-test p-value. NOT the 4.7e-21 from the Advanced notebook, which t-tested a vector against itself scaled by 1.1."
     },
     "legacy_export_negative_dwell_fraction": {
       "value": 85.0,
       "unit": "percent",
       "n_rows": 293,
       "dataset": "keystroke_export_20260513.csv (human rows)",
-      "source": "notebooks/exploration/README.md",
-      "description": "Share of human samples with negative mean dwell under the caret-index pairing defect.",
-      "verified": true
+      "source": "private:data/private/keystroke_export_20260513.csv",
+      "description": "Share of human samples with negative mean dwell under the caret-index pairing defect."
     },
     "legacy_export_median_dwell_ms": {
       "value": -285.5,
       "unit": "milliseconds",
       "n_rows": 293,
       "dataset": "keystroke_export_20260513.csv (human rows)",
-      "source": "notebooks/exploration/README.md",
-      "description": "Median mean_dwell_time before the fix. Physically impossible; measures the bug.",
-      "verified": true
+      "source": "private:data/private/keystroke_export_20260513.csv",
+      "description": "Median mean_dwell_time before the fix. Physically impossible; measures the bug."
     },
     "participants_collected": {
       "value": 49,
       "unit": "people",
-      "source": "data/private/keystroke_export_20260513.csv",
-      "description": "Distinct consenting participants in the collection study.",
-      "verified": true
+      "source": "private:data/private/keystroke_export_20260513.csv",
+      "description": "Distinct consenting participants in the collection study."
     }
   }
 }

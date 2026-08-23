@@ -174,7 +174,7 @@ bugs nahi pakadte.**
 ```python
 iso_eers = results_df['EER'].values
 svm_eers = iso_eers * 1.1          # placeholder for comparison
-t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → 4.689e-21
+t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → <!--!retracted-->4.689e-21<!--/-->
 ```
 
 Ye ek vector ka usi vector × 1.1 se t-test kar raha hai. Wo p-value evidence nahi, bas arithmetic hai.
@@ -309,7 +309,7 @@ novel hai aur thesis uske bina bhi chalega.
 
 - ❌ "136 million keystrokes pe trained" → "Aalto corpus ka 10,000-participant subset (~7.3M keystrokes)"
 - ❌ "State-of-the-art keystroke authentication" — CMU pe tum 2009 ke baseline se 40% peeche ho
-- ❌ "p = 4.7e-21" — ye `iso_eers * 1.1` ka artifact hai
+- ❌ "p = <!--!retracted-->4.7e-21<!--/-->" — ye `iso_eers * 1.1` ka artifact hai
 - ❌ "100% bot detection accuracy" — by construction separable, plus dwell bug
 - ❌ "SHAP-explained predictions" — jab tak SHAP sach mein inference path mein na ho
 - ❌ "AI agents detect karta hai" → "unattested input provenance aur behavioral discontinuity detect karta hai; N agent frameworks pe evaluated, leave-one-out generalisation X%"

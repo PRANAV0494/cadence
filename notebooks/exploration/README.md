@@ -19,7 +19,7 @@ This t-tests a vector against **itself scaled by 1.1**. The resulting <!--!retra
 arithmetic, not evidence of anything.
 
 **Use instead:** `Final_Keystroke_Dynamics_Full.ipynb` cell 13 — a genuine paired t-test of Isolation
-Forest vs One-Class SVM across 51 subjects: **t = <!--@cmu_if_vs_ocsvm_t_statistic-->3.11<!--/-->27, p = <!--@cmu_if_vs_ocsvm_p_value-->0.003<!--/-->1**.
+Forest vs One-Class SVM across 51 subjects: **t = <!--@cmu_if_vs_ocsvm_t_statistic-->3.1127<!--/-->, p = <!--@cmu_if_vs_ocsvm_p_value-->0.0031<!--/-->**.
 
 Also avoid the "vs 0.51 global model" comparison that appears here — EER 0.5065 is chance level, so
 beating it is not a finding.
