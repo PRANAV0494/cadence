@@ -39,3 +39,7 @@ samconfig.local.toml
 .idea/
 .DS_Store
 Thumbs.db
+
+# local tooling config
+CLAUDE.md
+.claude/
