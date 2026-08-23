@@ -138,6 +138,83 @@ SMUGGLE_BEFORE = re.compile(r"(?:[\d+\-−]|\d\.)\Z")  # \Z, not $: $ also match
 SMUGGLE_AFTER = re.compile(r"^(?:\d|\.\d|[eE][-+]?\d|%)")
 
 
+# Wrappers a claim may legitimately carry: bold/italic/code emphasis, and the
+# units or symbols that surround a number in prose.
+_ALLOWED_WRAPPERS = re.compile(r"[*_`\s%]|&nbsp;|ms\b|percent\b", re.IGNORECASE)
+# Anything comment-shaped inside a marker body is stripped before rendering, so
+# digits hidden behind it are displayed but were never compared.
+_ANY_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_HTML_ENTITY = re.compile(r"&#x?[0-9a-fA-F]+;|&[a-zA-Z]+;")
+
+
+def _render_with_retraction_cover(text: str) -> tuple[str, list[bool]]:
+    """
+    Return the text as a reader sees it, plus a per-character flag for whether
+    that character sits inside a retraction span.
+
+    Comment *markers* are invisible; the text between them is not. So
+    `4.7e-2<!--!retracted-->1<!--/-->` renders as `4.7e-21` — the digit inside
+    the span is displayed. Deleting whole spans hid that: the literal never
+    formed, so the check passed while readers saw a live retracted value.
+
+    A mention is legitimate only when the entire literal is covered by a span,
+    which is what wrapping is supposed to mean.
+    """
+    rendered: list[str] = []
+    covered: list[bool] = []
+    inside = False
+    pos = 0
+
+    for m in _ANY_COMMENT.finditer(text):
+        chunk = text[pos : m.start()]
+        rendered.append(chunk)
+        covered.extend([inside] * len(chunk))
+
+        token = m.group()
+        if token.startswith(RETRACTION_OPEN):
+            inside = True
+        elif token == "<!--/-->":
+            inside = False
+        pos = m.end()
+
+    tail = text[pos:]
+    rendered.append(tail)
+    covered.extend([inside] * len(tail))
+    return "".join(rendered), covered
+
+
+def _uncovered_retracted(text: str) -> list[str]:
+    """Retracted literals that render without being fully inside a span."""
+    rendered, covered = _render_with_retraction_cover(text)
+    found = []
+    for bad in RETRACTED:
+        for m in re.finditer(re.escape(bad), rendered):
+            if not all(covered[m.start() : m.end()]):
+                found.append(bad)
+                break
+    return found
+
+
+def _body_is_only_a_number(text: str) -> bool:
+    """
+    True when the marker body renders as exactly one number.
+
+    Taking the first number substring was not enough. These all render 3.1127
+    while only 3.11 was compared:
+
+        <!--@t-->3.11<!--x-->27<!--/-->
+        <!--@t-->3.11<!---->27<!--/-->
+        <!--@t-->3.11&#50;7<!--/-->
+
+    That is the precision-smuggling defect again, moved inside the span. The
+    body must contain a number and nothing else that can render as one.
+    """
+    if _ANY_COMMENT.search(text) or _HTML_ENTITY.search(text):
+        return False
+    stripped = _ALLOWED_WRAPPERS.sub("", text.replace("−", "-"))
+    return bool(re.fullmatch(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", stripped))
+
+
 def _shown_number(text: str) -> tuple[float, int, bool] | None:
     """
     Return (value, decimals displayed, is_scientific) for the number in `text`.
@@ -175,14 +252,16 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
         if text.count(RETRACTION_OPEN) != len(RETRACTION_NOTICE.findall(text)):
             problems.append(f"{rel}: malformed retraction marker — missing <!--/-->.")
 
-        asserted = RETRACTION_NOTICE.sub("", text)
-        for bad, why in RETRACTED.items():
-            if bad in asserted:
-                problems.append(
-                    f"{rel}: asserts retracted value {bad} — {why}. If documenting "
-                    f"the retraction, wrap it in <!--!retracted-->...<!--/-->."
-                )
-                break  # one report per document is enough
+        # Compare against what renders, and require the whole literal to sit
+        # inside a retraction span. Wrapping only a fragment --
+        # `p = 4.7e-2<!--!retracted-->1<!--/-->` -- displays the live value with
+        # no visible marker.
+        for bad in _uncovered_retracted(text):
+            problems.append(
+                f"{rel}: renders retracted value {bad} — {RETRACTED[bad]}. Wrap "
+                f"the whole literal in <!--!retracted-->...<!--/-->, not part of it."
+            )
+            break  # one report per document is enough
 
         for match in CLAIM.finditer(text):
             key, shown = match.group(1), match.group(2)
@@ -209,13 +288,28 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
                     f"The whole displayed number must be inside the markers."
                 )
 
+            if not _body_is_only_a_number(shown):
+                problems.append(
+                    f"{rel}:{line}: claim '{key}' body {shown!r} is not a plain "
+                    f"number. Comments or entities inside a marker render digits "
+                    f"that are never compared."
+                )
+                continue
+
             parsed = _shown_number(shown)
             if parsed is None:
                 problems.append(f"{rel}:{line}: claim '{key}' has no number in {shown!r}")
                 continue
             found, decimals, scientific = parsed
 
-            declared = float(results[key]["value"])
+            raw = results[key].get("value")
+            if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+                problems.append(
+                    f"{rel}:{line}: claim '{key}' has a non-numeric value "
+                    f"({raw!r}) in results.json"
+                )
+                continue
+            declared = float(raw)
 
             is_percent = results[key].get("unit") == "percent"
             if is_percent:

@@ -201,7 +201,46 @@ def test_unclosed_marker_does_not_pass_silently():
 
 def test_claim_without_a_number_fails():
     out = problems_for("<!--@t_stat-->about three<!--/-->")
-    assert any("no number" in p for p in out)
+    assert any("not a plain number" in p or "no number" in p for p in out)
+
+
+def test_comment_inside_a_marker_body_is_rejected():
+    """
+    Renders 3.1127 while only 3.11 is compared — the smuggling defect moved
+    inside the span, where the round-2 guards could not see it.
+    """
+    for body in ("3.11<!--x-->27", "3.11<!---->27"):
+        out = problems_for(f"<!--@t_stat-->{body}<!--/-->")
+        assert any("not a plain number" in p for p in out), body
+
+
+def test_html_entity_inside_a_marker_body_is_rejected():
+    """&#50; renders as '2', so 3.11&#50;7 displays 3.1127."""
+    out = problems_for("<!--@t_stat-->3.11&#50;7<!--/-->")
+    assert any("not a plain number" in p for p in out)
+
+
+def test_partially_wrapped_retraction_is_caught():
+    """
+    Comment markers are invisible but the text between them renders, so
+    `4.7e-2<!--!retracted-->1<!--/-->` displays the live value. Deleting whole
+    spans hid this: the literal never formed in the stripped text.
+    """
+    for doc in ("Our p = 4.7e-2<!--!retracted-->1<!--/--> here",
+                "Our p = 4.7e<!--!retracted-->-21<!--/--> here"):
+        out = problems_for(doc)
+        assert any("retracted" in p for p in out), doc
+
+
+def test_fully_wrapped_retraction_still_allowed():
+    assert problems_for("see <!--!retracted-->p = 4.7e-21<!--/--> above") == []
+
+
+def test_non_numeric_declared_value_is_reported_not_raised():
+    """value: null used to surface as TypeError from float()."""
+    r = {"k": {"value": None, "n_rows": 1, "source": "README.md", "description": "d"}}
+    out = problems_for("<!--@k-->1.0<!--/-->", r)
+    assert any("non-numeric value" in p for p in out)
 
 
 # ── retracted values ───────────────────────────────────────────

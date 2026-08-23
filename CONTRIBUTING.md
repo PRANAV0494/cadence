@@ -21,9 +21,16 @@ Commit messages use plain imperative mood: `fix: match keydown/keyup by press se
 ## Never commit
 
 - **`data/private/`** — real participant data. This study collected keystroke timings from
-  <!--@participants_collected-->49<!--/--> people under consent; their data does not leave the machine it was collected on.
-  Pseudonymise to stable hashes before any analysis leaves this repo, and keep the mapping out
-  of version control.
+  <!--@participants_collected-->49<!--/--> people under consent.
+
+  Be accurate about where that data already is. It was captured in the browser and **POSTed to a
+  live API** (`edge/reference/capture.js.BUGGY` → API Gateway → DynamoDB), and the CSV in
+  `data/private/` was exported from that table with usernames unredacted. So identified records
+  exist in at least three places: the DynamoDB table, any export on a developer machine, and any
+  backup of either. Treat the live table as in scope for data handling, not just this directory.
+
+  Do not commit the exports. Pseudonymise to stable hashes before any analysis leaves this repo,
+  and keep the mapping out of version control.
 - **Secrets of any kind** — JWT signing keys, AWS credentials, admin password hashes.
   All configuration comes from environment variables. `cadence/api/auth.py` intentionally has
   **no defaults**: it raises on startup if the environment is unset, rather than silently
@@ -41,7 +48,7 @@ an adversarial reading is worse than no result.
 
 - **Report sample counts and confidence intervals on every number.** A table row without an *n*
   is not a result.
-- **Include baselines you lose to.** Killourhy & Maxion (2009) report EER **<!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->** with scaled
+- **Include baselines you lose to.** Killourhy & Maxion (2009) report EER **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->** with scaled
   Manhattan distance on the same 51 CMU subjects; our best is currently **<!--@cmu_lof_eer-->0.1367<!--/-->**. That gap is
   stated in the README and stays there until it closes.
 - **Lead with out-of-distribution generalisation**, not in-distribution accuracy. For automation

@@ -15,11 +15,11 @@
   ],
   "results": {
     "cmu_baseline_scaled_manhattan_eer": {
-      "value": 0.0962,
+      "value": 0.096,
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
-      "source": "external: Killourhy & Maxion, DSN 2009",
-      "description": "Published baseline. We do not beat this yet."
+      "source": "external: Killourhy & Maxion, DSN 2009, Table 2 (Manhattan scaled)",
+      "description": "Published baseline on the same 51 subjects. Reported as 0.096 (SD 0.069). Previously stored as 0.0962, a digit that appears in no computation in this repository and could not be traced to the paper; transcribed from a summary. We do not beat this yet."
     },
     "cmu_lof_eer": {
       "value": 0.1367,

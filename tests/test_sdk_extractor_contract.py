@@ -34,7 +34,6 @@ def run_sdk(script_body: str):
     const {{ createRecorder }} = require({json.dumps(str(SDK))});
     const r = createRecorder();
     let now = 0;
-    const _p = performance.now;
     performance.now = () => now;
     const advance = (ms) => {{ now += ms; }};
     const down = (code, key) => r.onKeyDown({{ code, key, repeat: false, isTrusted: true }});

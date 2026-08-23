@@ -77,7 +77,7 @@ not predictions).
 
 | Method | Dataset | EER | n |
 |---|---|---|---|
-| Killourhy & Maxion 2009, scaled Manhattan | CMU DSL-StrongPasswordData | **<!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->** | 51 subjects |
+| Killourhy & Maxion 2009, scaled Manhattan | CMU DSL-StrongPasswordData | **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->** | 51 subjects |
 | This work — Local Outlier Factor | CMU DSL-StrongPasswordData | <!--@cmu_lof_eer-->0.1367<!--/--> | 51 subjects |
 | This work — One-Class SVM | CMU DSL-StrongPasswordData | <!--@cmu_ocsvm_eer-->0.1375<!--/--> | 51 subjects |
 | This work — Isolation Forest | CMU DSL-StrongPasswordData | <!--@cmu_isolation_forest_eer-->0.1532<!--/--> | 51 subjects |

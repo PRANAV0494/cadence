@@ -144,7 +144,7 @@
             border-color: var(--accent);
         }
 
-        /* ============= PASSWORD DISPLAY ============= */
+        /* ============= CMU_PHRASE DISPLAY ============= */
         .password-display {
             text-align: center;
             padding: 16px;
@@ -585,10 +585,11 @@
 
     <script>
         // ============================================================
-        // PASSWORD & FEATURE CONFIG
+        // BENCHMARK PHRASE & FEATURE CONFIG
         // ============================================================
-        // The CMU dataset password — models were trained on this exact sequence
-        const PASSWORD = '.tie5Roanl';
+        // The CMU benchmark phrase subjects reproduce. Not a credential:
+        // it is published with the dataset and models were trained on it.
+        const CMU_PHRASE = '.tie5Roanl';
 
         // The exact key sequence (what key events to expect)
         // Characters: .  t  i  e  5  R  o  a  n  l
@@ -695,7 +696,7 @@
         loadUsers();
 
         // ============================================================
-        // PASSWORD MAP: character → display index
+        // CMU_PHRASE MAP: character → display index
         // ============================================================
         // Maps expected character positions to the visual display
         const CHAR_TO_DISPLAY = {
@@ -860,7 +861,7 @@
 
         function updateInput() {
             // Show typed characters as dots or actual chars
-            const typed = PASSWORD.substring(0, Math.min(expectingChar, PASSWORD.length));
+            const typed = CMU_PHRASE.substring(0, Math.min(expectingChar, CMU_PHRASE.length));
             input.value = typed;
         }
 

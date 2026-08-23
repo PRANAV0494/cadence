@@ -19,13 +19,20 @@ SDK = ROOT / "edge" / "cadence-sdk.js"
 
 
 @pytest.fixture(scope="module")
-def client(monkeypatch_module=None):
-    """TestClient with the environment the API refuses to start without."""
+def client():
+    """
+    TestClient with the environment the API refuses to start without.
+
+    Assigned, not setdefault: a real JWT_SECRET_KEY exported in a developer's
+    shell would otherwise be kept, making the suite depend on the machine it
+    runs on. The hash is a syntactically valid bcrypt string so anything that
+    parses it does not choke; no test logs in through it.
+    """
     import os
 
-    os.environ.setdefault("JWT_SECRET_KEY", "test-key-not-used-for-real-tokens")
-    os.environ.setdefault("ADMIN_USERNAME", "test-admin")
-    os.environ.setdefault("ADMIN_PASSWORD_HASH", "$2b$12$" + "x" * 22)
+    os.environ["JWT_SECRET_KEY"] = "test-key-not-used-for-real-tokens"
+    os.environ["ADMIN_USERNAME"] = "test-admin"
+    os.environ["ADMIN_PASSWORD_HASH"] = "$2b$12$" + "K" * 53
     os.environ["USE_LOCAL_DB"] = "true"
 
     from fastapi.testclient import TestClient
@@ -156,3 +163,38 @@ def test_consent_is_required(client):
 def test_empty_event_list_is_rejected(client):
     r = client.post("/api/submit", json=payload([]))
     assert r.status_code == 400
+
+
+def test_legacy_payload_names_the_offending_fields(client):
+    """
+    Issue #3 asked that a pre-fix client be told to upgrade. extra="forbid"
+    gives a schema 422; the detail must at least name key_index so the reader
+    knows which field is the problem.
+    """
+    legacy = [
+        {"event_type": "keydown", "key": "a", "timestamp": 0.0, "key_index": 0,
+         "key_class": "letter", "is_backspace": False, "is_paste": False},
+    ]
+    r = client.post("/api/submit", json=payload(legacy))
+
+    assert r.status_code == 422
+    assert "key_index" in r.text
+
+
+@needs_node
+def test_paste_reaches_the_api_without_leaking_content(client):
+    """The privacy invariant has to hold across the wire, not just in the SDK."""
+    events = sdk_events(
+        """
+        down('KeyA','a'); advance(80); up('KeyA','a'); advance(50);
+        r.onPaste({ clipboardData: { getData: () => 'super-secret-password' }, isTrusted: true });
+        advance(40);
+        down('KeyB','b'); advance(80); up('KeyB','b');
+        """
+    )
+    body = payload(events)
+    assert "super-secret-password" not in json.dumps(body)
+
+    r = client.post("/api/submit", json=body)
+    assert r.status_code == 201, r.text
+    assert "super-secret-password" not in r.text
