@@ -90,6 +90,17 @@ def test_placeholder_is_judged_on_the_value_not_the_line():
     assert scan_line('API_KEY = "sk-liveproductionkey"  # see example above') is True
 
 
+def test_standalone_secret_is_not_hidden_by_a_comment():
+    """
+    A PEM header, AKIA key, or placeholder literal is a hit on its own shape;
+    a comment beside it must not cancel the hit. PLACEHOLDER is for assignment
+    values only.
+    """
+    assert scan_line("-----BEGIN RSA PRIVATE KEY-----  # example") is True
+    assert scan_line("AKIAZZ7Q3XKL2MNPQRST  # sample") is True
+    assert scan_line("-----BEGIN RSA PRIVATE KEY-----") is True
+
+
 # ── the repository itself ──────────────────────────────────────
 
 def test_repository_is_clean():
@@ -103,7 +114,7 @@ def test_scanner_does_not_flag_its_own_patterns():
 
 def test_self_exemptions_are_exact_paths_not_directories():
     """
-    Only two files may hold secret-shaped strings: the scanner and this file.
+    Three files may hold secret-shaped strings: .env.example, the scanner, and this file.
     A directory-level exemption would silently cover future files -- the same
     mistake the models/network/ blob allowlist made.
     """

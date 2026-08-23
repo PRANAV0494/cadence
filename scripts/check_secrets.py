@@ -80,9 +80,7 @@ def _is_reference(line: str, match: re.Match) -> bool:
 def scan_line(line: str) -> bool:
     """True if this line looks like it hardcodes a secret."""
     if STANDALONE.search(line):
-        value_ctx = line
-        # Even a standalone shape can be an illustration.
-        return not PLACEHOLDER.search(value_ctx)
+        return True
 
     m = ASSIGN.search(line)
     if not m or _is_reference(line, m):
