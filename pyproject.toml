@@ -1,0 +1,20 @@
+[project]
+name = "cadence"
+version = "0.1.0"
+description = "Continuous attestation of who is driving an authenticated web session"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+# tests/legacy holds unported suites inherited from the pre-consolidation
+# repositories. They import packages that no longer exist and are kept as
+# reference, not as a gate. See tests/legacy/README.md.
+testpaths = ["tests"]
+norecursedirs = ["tests/legacy", "reference", "notebooks", "data"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["cadence*"]

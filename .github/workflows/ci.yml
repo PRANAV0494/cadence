@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # The SDK contract tests drive the real capture SDK under Node and feed
+      # its output to the Python extractor. Without Node they skip silently,
+      # which would defeat the point of having them.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install test dependencies
+        run: python -m pip install --quiet pytest
+
+      - name: Verify Node is present
+        run: |
+          node --version
+          echo "Node available — SDK contract tests will run, not skip."
+
+      - name: Run tests
+        run: python -m pytest -v
+
+  guard:
+    name: repository guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # This project collects keystroke timings from real people. A single
+      # careless `git add -A` would publish them irreversibly. These checks
+      # exist because that has nearly happened once already.
+      - name: No participant data
+        run: |
+          if git ls-files | grep -E '^data/private/|keystroke_export_.*\.csv$'; then
+            echo "::error::Participant data is committed. Remove it and verify .gitignore."
+            exit 1
+          fi
+          echo "OK — no participant data tracked."
+
+      - name: No third-party datasets
+        run: |
+          if git ls-files | grep -E 'DSL-StrongPasswordData\.csv|^data/(keyrecs|aalto)/'; then
+            echo "::error::A redistributed dataset is committed. Ship a download script instead."
+            exit 1
+          fi
+          echo "OK — no datasets tracked."
+
+      - name: No large or unexpected model blobs
+        run: |
+          unexpected=$(git ls-files | grep -E '\.(pkl|joblib)$' | grep -v '^models/network/' || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::Model blobs outside models/network/ are committed:"
+            echo "$unexpected"
+            echo "Use GitHub Releases or DVC."
+            exit 1
+          fi
+          oversize=$(git ls-files | while read -r f; do
+            [ -f "$f" ] && [ "$(stat -c%s "$f")" -gt 10485760 ] && echo "$f ($(stat -c%s "$f") bytes)"
+          done || true)
+          if [ -n "$oversize" ]; then
+            echo "::error::Files over 10 MB are committed:"
+            echo "$oversize"
+            exit 1
+          fi
+          echo "OK — no unexpected or oversized binaries."
+
+      - name: No hardcoded credentials
+        run: |
+          # Config must come from the environment. auth.py deliberately has no
+          # defaults so it fails fast rather than signing with a shared key.
+          hits=$(git grep -nIE \
+            'change-me-in-production|[A-Za-z0-9_]*(PASSWORD|SECRET|TOKEN|API_KEY)[A-Za-z0-9_]*[[:space:]]*=[[:space:]]*"[^"]{8,}"|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----' \
+            -- ':!docs/*' ':!CONTRIBUTING.md' ':!MANIFEST.md' ':!notebooks/*' ':!*.ipynb' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Possible hardcoded credential:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "OK — no hardcoded credentials in source."
+
+      - name: Deploy template ships no secret defaults
+        run: |
+          # These were CloudFormation parameter defaults, so `sam deploy`
+          # without an override shipped them as the production signing key.
+          if grep -nE 'Default:.*(change-me|\$2b\$)' deploy/template.yaml; then
+            echo "::error::deploy/template.yaml has a secret Default. Remove it."
+            exit 1
+          fi
+          echo "OK — no secret defaults in the deploy template."
