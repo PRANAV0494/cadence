@@ -163,6 +163,7 @@ class _TelemetryRequest:
     def __init__(self, path, body):
         self.path = path
         self.raw_content = body
+        self.method = "POST"
         self.host = "site.example"
         self.headers = _Headers({})
 
