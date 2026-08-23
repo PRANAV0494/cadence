@@ -31,6 +31,22 @@
 
   const AUTOREPEAT_DROP = true; // held-key repeats are not fresh presses
 
+  /**
+   * Keys that produce no character. They are recorded but flagged, because
+   * including them in timing statistics corrupts the result: a Shift held
+   * across a capital letter dwells far longer than the letter itself, and
+   * counting it as a character inflates typing speed.
+   *
+   * They are flagged rather than dropped — modifier usage is itself a
+   * behavioural signal, and discarding data at capture time is irreversible.
+   * Consumers filter on `is_modifier`.
+   */
+  const MODIFIER_KEYS = new Set([
+    "Shift", "Control", "Alt", "Meta", "AltGraph",
+    "CapsLock", "NumLock", "ScrollLock",
+    "Fn", "FnLock", "Hyper", "Super", "Symbol", "SymbolLock",
+  ]);
+
   function createRecorder() {
     let seq = 0;
     /** code -> seq of the press currently held down */
@@ -58,6 +74,7 @@
         key: e.key,
         timestamp: performance.now(),
         is_backspace: e.key === "Backspace",
+        is_modifier: MODIFIER_KEYS.has(e.key),
         is_paste: false,
         is_trusted: e.isTrusted,
       });
@@ -77,6 +94,7 @@
         key: e.key,
         timestamp: performance.now(),
         is_backspace: e.key === "Backspace",
+        is_modifier: MODIFIER_KEYS.has(e.key),
         is_paste: false,
         is_trusted: e.isTrusted,
       });
@@ -91,6 +109,7 @@
         key: null,
         timestamp: performance.now(),
         is_backspace: false,
+        is_modifier: false,
         is_paste: true,
         pasted_length: text.length, // length only — never the content
         is_trusted: e.isTrusted,
