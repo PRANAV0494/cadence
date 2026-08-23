@@ -106,11 +106,67 @@ def count_keystrokes(events: list[dict]) -> int:
     )
 
 
+def typed_string(events: list[dict]) -> str:
+    """Reconstruct what was actually typed: characters from character-producing
+    keydowns, backspace pops the last character, modifiers and pastes skipped.
+
+    This is the provenance claim the proxy can actually verify: the submitted
+    text must be contained in this string.
+    """
+    chars: list[str] = []
+    for e in events:
+        if e.get("event_type") != "keydown":
+            continue
+        if e.get("is_modifier") or e.get("is_paste"):
+            continue
+        # Backspace is recorded as key='Backspace' (multi-char) with
+        # is_backspace set — test the flag before the single-char filter,
+        # or every backspace is silently skipped.
+        if e.get("is_backspace"):
+            if chars:
+                chars.pop()
+            continue
+        key = e.get("key")
+        if not isinstance(key, str) or len(key) != 1:
+            continue
+        chars.append(key)
+    return "".join(chars)
+
+
+def text_fields_in_body(body: bytes, content_type: str | None) -> dict[str, str]:
+    """Name -> first value for text-bearing fields in a urlencoded body."""
+    if not body:
+        return {}
+    ct = (content_type or "").lower()
+    if "application/x-www-form-urlencoded" not in ct:
+        return {}
+    try:
+        fields = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
+    except ValueError:
+        return {}
+    return {
+        name: values[0]
+        for name in TEXT_FIELDS
+        for values in [fields.get(name, [])]
+        if values
+    }
+
+
 def post_is_justified(body: bytes, content_type: str | None, events: list[dict]) -> bool:
-    """False only when the POST carries text and the session typed nothing."""
-    if not post_has_text(body, content_type):
+    """False only when a text field's value is not contained in the typed string.
+
+    One stray keydown no longer justifies arbitrary text: the submitted value
+    must be a substring of what the session actually typed. Empty typed plus
+    a text field is unjustified. Non-form and non-text bodies pass.
+    """
+    fields = text_fields_in_body(body, content_type)
+    if not fields:
         return True
-    return count_keystrokes(events) > 0
+    typed = typed_string(events)
+    for value in fields.values():
+        if _HAS_LETTER.search(value) and value not in typed:
+            return False
+    return True
 
 
 def cap_session(events: list[dict], limit: int = MAX_EVENTS_PER_SESSION) -> list[dict]:

@@ -271,16 +271,29 @@ def test_other_requests_are_untouched(monkeypatch):
 
 
 def test_telemetry_events_survive_flush_boundaries_in_the_buffer(monkeypatch):
-    """Two POSTs from one connection accumulate under one key."""
+    """Two beacons from one browser accumulate under one key.
+
+    A real browser echoes the minted __cadence_sid after the first 204;
+    the fake flow does the same, or each cookie-less beacon would mint
+    its own session.
+    """
     addon = _load_addon()
     addon.sessions.clear()
     _install_fake_mitmproxy(monkeypatch)
 
+    cookie = None
     for seq in (0, 1):
         body = json.dumps(
             {"events": [{"event_type": "keydown", "seq": seq, "code": "KeyA"}]}
         ).encode()
-        addon.addons[0].request(_TelemetryFlow("/__cadence/telemetry", body))
+        flow = _TelemetryFlow("/__cadence/telemetry", body)
+        if cookie:
+            flow.request.headers["cookie"] = cookie
+        addon.addons[0].request(flow)
+        if flow.response is not None:
+            minted = flow.response.headers.get("Set-Cookie")
+            if minted and "__cadence_sid=" in minted:
+                cookie = minted.split(";")[0]
 
     (key,) = addon.sessions.keys()
     assert [e["seq"] for e in addon.sessions[key]] == [0, 1]

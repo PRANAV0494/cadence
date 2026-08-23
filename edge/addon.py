@@ -62,6 +62,45 @@ def _flow_session_key(flow) -> str:
     return session_key(cookie, _client_fallback(flow))
 
 
+def _request_cookie(flow) -> str | None:
+    try:
+        return flow.request.headers.get("cookie")
+    except AttributeError:
+        return None
+
+
+def _existing_sid(flow) -> str | None:
+    """The sid the request already carries, or None."""
+    sid = session_key(_request_cookie(flow), "")
+    return sid or None
+
+
+def _set_cookie_if_absent(response, flow) -> None:
+    """Mint a session cookie only when the request did not already carry one.
+
+    Rotating __cadence_sid on every HTML response was the first version's
+    fatal bug: telemetry buffered under the old id, the next page minted a
+    new one, and the form POST saw an empty buffer and 403'd a human.
+    The cookie is minted once per browser session, here and on the telemetry
+    204. Never overwrites the upstream's Set-Cookie (mitmproxy headers
+    support multiple values; fakes in tests use .add when present).
+    """
+    if _existing_sid(flow) is not None:
+        return
+    sid = new_session_id(next(_session_counter))
+    _add_set_cookie(response, sid)
+
+
+def _add_set_cookie(response, sid: str) -> None:
+    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax"
+    add = getattr(response.headers, "add", None)
+    if callable(add):
+        add("Set-Cookie", set_cookie)
+    else:
+        if "Set-Cookie" not in response.headers:
+            response.headers["Set-Cookie"] = set_cookie
+
+
 class CadenceAddon:
     def request(self, flow):
         """Two responsibilities, in order: telemetry sink, provenance gate."""
@@ -90,7 +129,11 @@ class CadenceAddon:
                     events = maybe
             except (ValueError, AttributeError):
                 events = []
-        key = _flow_session_key(flow)
+        # Mint BEFORE buffering: if this beacon has no cookie yet (it can
+        # beat the first HTML response), the buffer and the newly issued
+        # cookie must share one id, or one browser becomes two sessions.
+        existing = _existing_sid(flow)
+        key = existing if existing is not None else new_session_id(next(_session_counter))
         buffered = sessions.setdefault(key, [])
         buffered.extend(events)
         sessions[key] = cap_session(buffered)
@@ -98,7 +141,13 @@ class CadenceAddon:
         # mitmproxy answers locally and nothing is forwarded upstream.
         from mitmproxy import http
 
-        flow.response = http.Response.make(204, b"", {"Content-Type": "text/plain"})
+        flow.response = http.Response.make(
+            204,
+            b"",
+            {"Content-Type": "text/plain"},
+        )
+        if existing is None:
+            _add_set_cookie(flow.response, key)
 
     def _enforce_provenance(self, flow):
         """403 a text-bearing form POST from a session that typed nothing.
@@ -130,16 +179,14 @@ class CadenceAddon:
             return
         body = response.content or b""
         new = inject(body, SDK_SOURCE)
-        # First HTML response on the connection seeds the session cookie so
-        # telemetry and POSTs from this browser share one key even across
-        # keep-alive reconnects or HTTP/2 stream splits.
-        sid = new_session_id(next(_session_counter))
-        set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax"
-        response.headers["Set-Cookie"] = set_cookie
         if new != body:
             response.content = new
             if "Content-Length" in response.headers:
                 del response.headers["Content-Length"]
+        # Mint the session cookie only on first sight: telemetry and POSTs
+        # from this browser then share one key even across keep-alive
+        # reconnects or HTTP/2 stream splits. Never rotates an existing sid.
+        _set_cookie_if_absent(response, flow)
 
 
 addons = [CadenceAddon()]

@@ -24,6 +24,7 @@ from provenance import (  # noqa: E402
     post_has_text,
     post_is_justified,
     session_key,
+    typed_string,
 )
 
 FORM = "application/x-www-form-urlencoded"
@@ -82,7 +83,11 @@ def test_text_post_with_zero_keystrokes_is_unjustified():
 
 
 def test_text_post_with_keystrokes_is_justified():
-    assert post_is_justified(b"message=hello", FORM, [KEYDOWN]) is True
+    hello = [
+        {"event_type": "keydown", "is_modifier": False, "is_paste": False, "key": c}
+        for c in "hello"
+    ]
+    assert post_is_justified(b"message=hello", FORM, hello) is True
 
 
 def test_non_text_post_passes_without_keystrokes():
@@ -100,6 +105,56 @@ def test_modifier_or_paste_events_do_not_justify():
     ]
     assert count_keystrokes(events) == 0
     assert post_is_justified(b"message=hello", FORM, events) is False
+
+
+# ── typed-string reconstruction ────────────────────────────────
+
+def _k(key: str, **kw) -> dict:
+    base = {"event_type": "keydown", "is_modifier": False, "is_paste": False, "key": key}
+    base.update(kw)
+    return base
+
+
+def test_typed_string_reconstructs_characters():
+    assert typed_string([_k(c) for c in "hello"]) == "hello"
+
+
+def test_backspace_pops_the_last_character():
+    assert typed_string([_k("h"), _k("e"), _k("y"), _k("Backspace", is_backspace=True)]) == "he"
+
+
+def test_modifiers_and_pastes_are_skipped():
+    assert (
+        typed_string([_k("Shift", is_modifier=True), _k("a"), _k(None, is_paste=True)])
+        == "a"
+    )
+
+
+# ── substring provenance ───────────────────────────────────────
+
+def test_typed_hello_justifies_message_hello():
+    assert post_is_justified(b"message=hello", FORM, [_k(c) for c in "hello"]) is True
+
+
+def test_typed_single_h_does_not_justify_hello():
+    """One stray keydown must not justify arbitrary text."""
+    assert post_is_justified(b"message=hello", FORM, [_k("h")]) is False
+
+
+def test_urldecoding_applies_before_matching():
+    assert (
+        post_is_justified(b"message=hello+world", FORM, [_k(c) for c in "hello world"])
+        is True
+    )
+
+
+def test_multiple_text_fields_must_all_be_typed():
+    events = [_k(c) for c in "hello"]
+    assert post_is_justified(b"title=hi&message=hello", FORM, events) is False
+    assert (
+        post_is_justified(b"title=hi&message=hello", FORM, [_k(c) for c in "hi hello"])
+        is True
+    )
 
 
 # ── cap ────────────────────────────────────────────────────────
@@ -198,15 +253,44 @@ def test_html_response_seeds_session_cookie(monkeypatch):
     assert b'id="cadence-sdk"' in flow.response.content  # injection still happens
 
 
-def test_each_html_response_gets_a_distinct_sid():
+def test_existing_sid_is_not_rotated():
+    """The first version minted a new sid per HTML response: telemetry stayed
+    under the old id, the POST saw an empty buffer, humans got 403'd."""
     addon = _load_addon()
-    sids = []
-    for _ in range(3):
-        flow = _Flow(_Request("/page"))
-        flow.response = _Response(b"<html><body></body></html>")
-        addon.addons[0].response(flow)
-        sids.append(flow.response.headers.get("Set-Cookie").split("=")[1].split(";")[0])
-    assert len(set(sids)) == 3
+    flow = _Flow(_Request("/page", headers={"cookie": "__cadence_sid=keepme"}))
+    flow.response = _Response(b"<html><body></body></html>")
+    addon.addons[0].response(flow)
+
+    set_cookie = flow.response.headers.get("Set-Cookie")
+    assert set_cookie is None  # existing sid kept, nothing re-issued
+
+
+def test_missing_sid_is_minted_once():
+    addon = _load_addon()
+    flow = _Flow(_Request("/page"))
+    flow.response = _Response(b"<html><body></body></html>")
+    addon.addons[0].response(flow)
+
+    set_cookie = flow.response.headers.get("Set-Cookie")
+    assert set_cookie and set_cookie.startswith("__cadence_sid=")
+    assert "SameSite=Lax" in set_cookie
+
+
+def test_telemetry_204_also_seeds_a_missing_sid(monkeypatch):
+    """A beacon can arrive before any HTML response minted the cookie."""
+    addon = _load_addon()
+    addon.sessions.clear()
+    _fake_mitmproxy(monkeypatch)
+
+    flow = _telemetry_flow(events=[KEYDOWN])  # no cookie on the request
+    addon.addons[0].request(flow)
+
+    assert flow.response is not None
+    set_cookie = flow.response.headers.get("Set-Cookie")
+    assert set_cookie and set_cookie.startswith("__cadence_sid=")
+    # and the buffer keyed under the freshly minted id, not the peer fallback
+    (key,) = addon.sessions.keys()
+    assert key in set_cookie
 
 
 def test_telemetry_buffers_under_cookie_session(monkeypatch):
@@ -248,7 +332,13 @@ def test_text_post_with_keystrokes_goes_through(monkeypatch):
     _fake_mitmproxy(monkeypatch)
 
     addon.addons[0].request(
-        _telemetry_flow(cookie="__cadence_sid=deadbeef", events=[KEYDOWN])
+        _telemetry_flow(
+            cookie="__cadence_sid=deadbeef",
+            events=[
+                {"event_type": "keydown", "is_modifier": False, "is_paste": False, "key": c}
+                for c in "hello world"
+            ],
+        )
     )
     flow = _Flow(
         _Request(
