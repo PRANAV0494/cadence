@@ -3,7 +3,10 @@ Tests for the edge injector: pure-function injection plus the CLI surface.
 No mitmdump is started anywhere in this file.
 """
 
+import json
+import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -151,4 +154,187 @@ def test_addon_skips_flow_without_response():
 
     flow = _NoResponse()
     addon.addons[0].response(flow)  # must not raise
+
+
+# ── telemetry: request() swallows and buffers ──────────────────
+
+class _TelemetryRequest:
+    def __init__(self, path, body):
+        self.path = path
+        self.raw_content = body
+        self.host = "site.example"
+        self.headers = _Headers({})
+
+
+class _TelemetryFlow:
+    def __init__(self, path, body):
+        self.request = _TelemetryRequest(path, body)
+        self.client_conn = type(
+            "Conn", (), {"peername": ("127.0.0.1", 54321)}
+        )()
+        self.response = None
+
+
+def _install_fake_mitmproxy(monkeypatch):
+    """addon.request imports mitmproxy.http inside the hook; supply a stub."""
+    class _Resp:
+        def __init__(self, code, content, headers):
+            self.status_code = code
+            self.content = content
+            self.headers = _Headers(dict(headers))
+
+        @classmethod
+        def make(cls, code, content, headers):
+            return cls(code, content, headers)
+
+    http_mod = types.ModuleType("mitmproxy.http")
+    http_mod.Response = _Resp
+    root_mod = types.ModuleType("mitmproxy")
+    root_mod.http = http_mod
+    monkeypatch.setitem(sys.modules, "mitmproxy", root_mod)
+    monkeypatch.setitem(sys.modules, "mitmproxy.http", http_mod)
+
+
+def test_telemetry_post_is_swallowed_and_buffered(monkeypatch):
+    addon = _load_addon()
+    addon.sessions.clear()
+    _install_fake_mitmproxy(monkeypatch)
+
+    body = json.dumps(
+        {"events": [{"event_type": "keydown", "seq": 0, "code": "KeyA"}]}
+    ).encode()
+    flow = _TelemetryFlow("/__cadence/telemetry", body)
+    addon.addons[0].request(flow)
+
+    # Answered locally with 204 — never forwarded upstream.
+    assert flow.response is not None
+    assert flow.response.status_code == 204
+    # Buffered under the connection key.
+    (key,) = addon.sessions.keys()
+    assert addon.sessions[key][0]["code"] == "KeyA"
+
+
+def test_query_string_still_hits_the_telemetry_path(monkeypatch):
+    addon = _load_addon()
+    addon.sessions.clear()
+    _install_fake_mitmproxy(monkeypatch)
+
+    body = json.dumps({"events": [{"event_type": "keyup", "seq": 0}]}).encode()
+    flow = _TelemetryFlow("/__cadence/telemetry?x=1", body)
+    addon.addons[0].request(flow)
+
+    assert flow.response is not None
+    assert len(list(addon.sessions.values())[0]) == 1
+
+
+def test_malformed_telemetry_body_is_swallowed_not_crashed(monkeypatch):
+    addon = _load_addon()
+    addon.sessions.clear()
+    _install_fake_mitmproxy(monkeypatch)
+
+    flow = _TelemetryFlow("/__cadence/telemetry", b"not json at all")
+    addon.addons[0].request(flow)
+
+    assert flow.response is not None  # still 204, still not forwarded
+    assert all(v == [] for v in addon.sessions.values())
+
+
+def test_other_requests_are_untouched(monkeypatch):
+    addon = _load_addon()
+    addon.sessions.clear()
+    _install_fake_mitmproxy(monkeypatch)
+
+    flow = _TelemetryFlow("/login", b"username=x")
+    addon.addons[0].request(flow)
+
+    assert flow.response is None  # forwarded normally, nothing answered locally
+    assert addon.sessions == {}
+
+
+def test_telemetry_events_survive_flush_boundaries_in_the_buffer(monkeypatch):
+    """Two POSTs from one connection accumulate under one key."""
+    addon = _load_addon()
+    addon.sessions.clear()
+    _install_fake_mitmproxy(monkeypatch)
+
+    for seq in (0, 1):
+        body = json.dumps(
+            {"events": [{"event_type": "keydown", "seq": seq, "code": "KeyA"}]}
+        ).encode()
+        addon.addons[0].request(_TelemetryFlow("/__cadence/telemetry", body))
+
+    (key,) = addon.sessions.keys()
+    assert [e["seq"] for e in addon.sessions[key]] == [0, 1]
+
+
+# ── SDK drain/flush under Node ─────────────────────────────────
+
+def _run_node(script_body: str) -> dict:
+    script = (
+        "const sdk = require(" + json.dumps(str(EDGE / "cadence-sdk.js")) + ");\n"
+        "const { createRecorder, flush } = sdk;\n"
+        "let now = 0; performance.now = () => now;\n"
+        + script_body
+    )
+    out = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, timeout=30
+    )
+    assert out.returncode == 0, f"node failed: {out.stderr}"
+    return json.loads(out.stdout)
+
+
+def test_drain_hands_off_and_continues_seq():
+    data = _run_node(
+        """
+        const r = createRecorder();
+        r.onKeyDown({ code: 'KeyA', key: 'a', repeat: false, isTrusted: true });
+        now += 85;
+        r.onKeyUp({ code: 'KeyA', key: 'a', isTrusted: true });
+        const first = r.drain();
+        r.onKeyDown({ code: 'KeyB', key: 'b', repeat: false, isTrusted: true });
+        now += 90;
+        r.onKeyUp({ code: 'KeyB', key: 'b', isTrusted: true });
+        const second = r.drain();
+        const again = r.drain();
+        process.stdout.write(JSON.stringify({ first, second, again }));
+        """
+    )
+    # First flush: keydown seq 0 + keyup paired to 0.
+    assert [e["seq"] for e in data["first"]] == [0, 0]
+    # After a flush boundary, seq continues — pairing survives the boundary.
+    assert [e["seq"] for e in data["second"]] == [1, 1]
+    assert data["again"] == []
+
+
+def test_flush_packages_drained_events_and_reports_failures():
+    data = _run_node(
+        """
+        const sink = createRecorder();
+        sink.onKeyDown({ code: 'KeyC', key: 'c', repeat: false, isTrusted: true });
+        const failed = flush(sink, { beacon: () => false, fetchPost: () => false });
+        const sent = [];
+        const okr = createRecorder();
+        okr.onKeyDown({ code: 'KeyD', key: 'd', repeat: false, isTrusted: true });
+        const ok = flush(okr, {
+          beacon: (url, body) => { sent.push([url, JSON.parse(body).events.length]); return true; },
+          fetchPost: () => { throw new Error('must not be called'); }
+        });
+        const empty = flush(createRecorder(), { beacon: () => false, fetchPost: () => false });
+        process.stdout.write(JSON.stringify({ failed, ok, empty, sent, path: sdk.TELEMETRY_PATH }));
+        """
+    )
+    assert data["failed"] == {"sent": 0, "error": "send-failed"}
+    assert data["ok"]["sent"] == 1 and data["ok"]["error"] is None
+    assert data["empty"] == {"sent": 0}
+    assert data["sent"] == [["/__cadence/telemetry", 1]]
+    assert data["path"] == "/__cadence/telemetry"
+
+
+def test_boot_block_flushes_on_pagehide_and_interval():
+    """The injected boot script wires flush into pagehide + a 5s interval."""
+    from inject import BOOT_BLOCK
+
+    assert 'addEventListener("pagehide"' in BOOT_BLOCK
+    assert "setInterval(send, 5000)" in BOOT_BLOCK
+    assert "CadenceSDK.flush(r)" in BOOT_BLOCK
 

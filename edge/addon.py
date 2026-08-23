@@ -1,4 +1,4 @@
-"""mitmproxy addon: inject cadence-sdk.js into HTML responses.
+"""mitmproxy addon: inject cadence-sdk.js into HTML responses, receive its telemetry.
 
 Run via `cadence proxy`, or directly:
 
@@ -7,6 +7,7 @@ Run via `cadence proxy`, or directly:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -20,8 +21,46 @@ EDGE_DIR = Path(__file__).resolve().parent
 SDK_PATH = EDGE_DIR / "cadence-sdk.js"
 SDK_SOURCE = SDK_PATH.read_text(encoding="utf-8")
 
+TELEMETRY_PATH = "/__cadence/telemetry"
+
+# client_key -> list of event dicts, in arrival order. Module-level so tests
+# (and a future consumer) can inspect what the proxy has buffered.
+sessions: dict[str, list[dict]] = {}
+
+
+def _client_key(flow) -> str:
+    """Key events by the connection: request host + client address."""
+    try:
+        host = flow.request.host
+    except AttributeError:
+        host = "unknown"
+    try:
+        addr = flow.client_conn.peername if flow.client_conn is not None else None
+    except AttributeError:
+        addr = None
+    return f"{host}|{addr}"
+
 
 class CadenceAddon:
+    def request(self, flow):
+        """Swallow POSTs to the proxy-owned telemetry path; never forward them."""
+        if flow.request.path.split("?")[0] != TELEMETRY_PATH:
+            return
+        events: list[dict] = []
+        if flow.request.raw_content:
+            try:
+                payload = json.loads(flow.request.raw_content)
+                events = list(payload.get("events") or [])
+            except (ValueError, AttributeError):
+                events = []
+        key = _client_key(flow)
+        sessions.setdefault(key, []).extend(events)
+        # A response set in the request hook short-circuits the proxy:
+        # mitmproxy answers locally and nothing is forwarded upstream.
+        from mitmproxy import http
+
+        flow.response = http.Response.make(204, b"", {"Content-Type": "text/plain"})
+
     def response(self, flow):
         response = flow.response
         if response is None:
