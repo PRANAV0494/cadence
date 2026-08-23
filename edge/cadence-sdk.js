@@ -190,8 +190,9 @@
    * it or reject the payload.
    *
    * Events handed to a sender are never re-drained: a failed send is
-   * recorded (lastError) and dropped, not retried, because a retry after a
-   * partial write could double-count a dwell sample.
+   * reported in the return value ({ sent: 0, error: "send-failed" }) and
+   * dropped, not retried, because a retry after a partial write could
+   * double-count a dwell sample.
    */
   const TELEMETRY_PATH = "/__cadence/telemetry";
 

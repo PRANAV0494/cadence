@@ -4,6 +4,7 @@ No mitmdump is started anywhere in this file.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import types
@@ -239,6 +240,23 @@ def test_malformed_telemetry_body_is_swallowed_not_crashed(monkeypatch):
     assert all(v == [] for v in addon.sessions.values())
 
 
+def test_non_list_events_is_swallowed_not_crashed(monkeypatch):
+    """
+    {"events": 1} parses as JSON; list(1) is TypeError. That raised before
+    the 204 was set, erroring the flow instead of swallowing it.
+    """
+    addon = _load_addon()
+    addon.sessions.clear()
+    _install_fake_mitmproxy(monkeypatch)
+
+    flow = _TelemetryFlow("/__cadence/telemetry", b'{"events": 1}')
+    addon.addons[0].request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 204
+    assert all(v == [] for v in addon.sessions.values())
+
+
 def test_other_requests_are_untouched(monkeypatch):
     addon = _load_addon()
     addon.sessions.clear()
@@ -269,7 +287,28 @@ def test_telemetry_events_survive_flush_boundaries_in_the_buffer(monkeypatch):
 
 # ── SDK drain/flush under Node ─────────────────────────────────
 
+# These drive the real SDK in Node; without node on PATH they would fail
+# hard instead of skipping like the contract tests in
+# test_sdk_extractor_contract.py do.
+node = pytest.mark.skipif(shutil.which("node") is None, reason="node is required for SDK tests")
+
+
 def _run_node(script_body: str) -> dict:
+    script = (
+        "const sdk = require(" + json.dumps(str(EDGE / "cadence-sdk.js")) + ");\n"
+        "const { createRecorder, flush } = sdk;\n"
+        "let now = 0; performance.now = () => now;\n"
+        + script_body
+    )
+    out = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, timeout=30
+    )
+    assert out.returncode == 0, f"node failed: {out.stderr}"
+    return json.loads(out.stdout)
+
+
+@node
+def test_drain_hands_off_and_continues_seq():
     script = (
         "const sdk = require(" + json.dumps(str(EDGE / "cadence-sdk.js")) + ");\n"
         "const { createRecorder, flush } = sdk;\n"
@@ -306,6 +345,7 @@ def test_drain_hands_off_and_continues_seq():
     assert data["again"] == []
 
 
+@node
 def test_flush_packages_drained_events_and_reports_failures():
     data = _run_node(
         """

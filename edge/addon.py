@@ -25,6 +25,12 @@ TELEMETRY_PATH = "/__cadence/telemetry"
 
 # client_key -> list of event dicts, in arrival order. Module-level so tests
 # (and a future consumer) can inspect what the proxy has buffered.
+#
+# UNBOUNDED: grows for the life of the process, one key per (host, client
+# connection), and the boot script flushes every 5s without eviction. Fine
+# for a local proxy run; the provenance work must replace this with a real
+# session id (proxy-set cookie) and a cap — keep-alive and HTTP/2 already
+# merge or split tabs in ways a TCP peer address does not mean "user session".
 sessions: dict[str, list[dict]] = {}
 
 
@@ -43,14 +49,24 @@ def _client_key(flow) -> str:
 
 class CadenceAddon:
     def request(self, flow):
-        """Swallow POSTs to the proxy-owned telemetry path; never forward them."""
+        """Swallow POSTs to the proxy-owned telemetry path; never forward them.
+
+        Any method hitting the exact path is swallowed, not just POST — the
+        path belongs to the proxy, so nothing on it should ever reach the
+        upstream server regardless of verb.
+        """
         if flow.request.path.split("?")[0] != TELEMETRY_PATH:
             return
         events: list[dict] = []
         if flow.request.raw_content:
             try:
                 payload = json.loads(flow.request.raw_content)
-                events = list(payload.get("events") or [])
+                maybe = payload.get("events") or []
+                # list(1) raises TypeError, and that would error the flow
+                # before the 204 below — turning a garbage payload into a
+                # proxy-visible error instead of a swallow.
+                if isinstance(maybe, list):
+                    events = maybe
             except (ValueError, AttributeError):
                 events = []
         key = _client_key(flow)
