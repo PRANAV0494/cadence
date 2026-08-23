@@ -13,8 +13,6 @@ That was caught in review, not by the checker.
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "evaluation"))
 
 from check_docs import (  # noqa: E402
@@ -149,6 +147,40 @@ def test_sentence_punctuation_is_not_smuggling():
     assert problems_for("The EER is <!--@t_stat-->3.1127<!--/-->. Next sentence.") == []
     assert problems_for("<!--@t_stat-->3.1127<!--/-->, which is high") == []
     assert problems_for("(<!--@t_stat-->3.1127<!--/-->)") == []
+
+
+def test_soft_wrapped_line_ending_in_a_digit_is_not_smuggling():
+    """
+    A dollar anchor matches before a trailing newline as well as at the end of
+    the string, so a line wrapping right after a digit tripped the leading
+    guard. Markdown renders that soft break as a space, so nothing is smuggled.
+    The pattern is anchored to the true end of the string now.
+    """
+    doc = "across all 51\n<!--@t_stat-->3.1127<!--/--> subjects"
+    assert problems_for(doc) == []
+
+
+def test_percent_form_mismatch_explains_itself():
+    """
+    A form mismatch used to report two identical numbers -- 'shows 85.0,
+    results.json says 85.0' -- which reads as nonsense.
+    """
+    out = problems_for("<!--@pct-->85<!--/-->")
+    assert len(out) == 1
+    assert "percent result shown as bare" in out[0]
+    assert "85%" in out[0] and "0.85" in out[0]
+
+
+def test_scientific_claims_may_be_displayed_rounded():
+    """
+    Decimals may be shown rounded; e-notation must honour the same contract,
+    since tiny p-values are exactly where it gets used.
+    """
+    r = {"tiny": {"value": 1.2345e-05, "n_rows": 10,
+                  "source": "README.md", "description": "p"}}
+    assert problems_for("p = <!--@tiny-->1.23e-05<!--/-->", r) == []
+    assert problems_for("p = <!--@tiny-->1.2345e-05<!--/-->", r) == []
+    assert problems_for("p = <!--@tiny-->9.9e-03<!--/-->", r) != []
 
 
 def test_ordinary_text_after_a_marker_is_fine():

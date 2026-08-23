@@ -35,6 +35,13 @@ WHAT IT CHECKS
 4. No document asserts a retracted value outside a retraction notice.
 5. No malformed markers silently verifying nothing.
 
+A NOTE ON THE ESCAPE HATCH
+--------------------------
+<!--!retracted--> is honour-system: wrapping a live assertion in it hides the
+number from this checker while still rendering it to readers. That is inherent
+to any escape hatch. The mitigation is that the wrapper is loud in a diff, which
+is where a reviewer will see it.
+
 Usage:
     python evaluation/check_docs.py          # check; exit 1 on any problem
     python evaluation/check_docs.py --list   # print declared results
@@ -125,7 +132,7 @@ def check_provenance(results: dict, root: Path = ROOT) -> list[str]:
 # Characters that change a number's value if they sit just outside a marker.
 # Leading: '9' before 0.1367 renders 90.1367; '-' flips the sign; '1.' makes
 # 0.1367 into 1.0.1367. A bare '.' cannot extend a number leftwards.
-SMUGGLE_BEFORE = re.compile(r"(?:[\d+\-−]|\d\.)$")
+SMUGGLE_BEFORE = re.compile(r"(?:[\d+\-−]|\d\.)\Z")  # \Z, not $: $ also matches before a trailing newline
 # Trailing: more digits, a decimal point *followed by* a digit, an exponent, or
 # a percent sign. A lone '.' is sentence punctuation, not smuggling.
 SMUGGLE_AFTER = re.compile(r"^(?:\d|\.\d|[eE][-+]?\d|%)")
@@ -135,10 +142,11 @@ def _shown_number(text: str) -> tuple[float, int, bool] | None:
     """
     Return (value, decimals displayed, is_scientific) for the number in `text`.
 
-    `decimals` drives rounding-aware comparison. It is meaningless for
-    e-notation — round(1.23e-05, 0) is 0.0, which would fail every scientific
-    claim even when it exactly matches — so that case is flagged and compared
-    by relative tolerance instead.
+    For e-notation, `decimals` counts mantissa digits, and the comparison
+    formats the declared value to that precision instead of calling round().
+    round(1.23e-05, 0) is 0.0, which failed every scientific claim including
+    exact matches; formatting keeps the "documents may round" contract intact
+    for the tiny p-values most likely to use this notation.
     """
     cleaned = text.strip().replace(",", "").replace("−", "-").replace("**", "")
     m = re.search(r"-?\d*\.?\d+(?:[eE][-+]?\d+)?", cleaned)
@@ -146,7 +154,8 @@ def _shown_number(text: str) -> tuple[float, int, bool] | None:
         return None
     literal = m.group()
     scientific = "e" in literal.lower()
-    decimals = len(literal.split(".")[1]) if "." in literal and not scientific else 0
+    mantissa = literal.lower().split("e")[0] if scientific else literal
+    decimals = len(mantissa.split(".")[1]) if "." in mantissa else 0
     return float(literal), decimals, scientific
 
 
@@ -208,7 +217,8 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
 
             declared = float(results[key]["value"])
 
-            if results[key].get("unit") == "percent":
+            is_percent = results[key].get("unit") == "percent"
+            if is_percent:
                 # A percent result may be written 85% or 0.85, but the form must
                 # match the display: '0.85%' is wrong by 100x and must not pass.
                 as_percent = "%" in shown or "percent" in shown.lower()
@@ -218,17 +228,30 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
 
             tol = max(1e-12, abs(found) * 1e-9)
             if scientific:
-                # Rounding is meaningless here; compare by relative tolerance.
-                ok = any(abs(c - found) <= max(tol, abs(c) * 1e-9) for c in candidates)
+                # Format to the mantissa precision shown, so 1.2345e-05 may be
+                # displayed as 1.23e-05 exactly as decimals may be rounded.
+                ok = any(
+                    abs(float(f"{c:.{decimals}e}") - found) <= max(tol, abs(c) * 1e-9)
+                    for c in candidates
+                )
             else:
                 # The document may round the declared value; it may not disagree.
                 ok = any(abs(round(c, decimals) - found) <= tol for c in candidates)
 
             if not ok:
-                problems.append(
-                    f"{rel}:{line}: claim '{key}' shows {found}, "
-                    f"results.json says {declared}"
-                )
+                if is_percent and abs(found - declared) <= tol:
+                    # Numerically equal but the wrong form — say so, rather than
+                    # reporting two identical numbers as a mismatch.
+                    problems.append(
+                        f"{rel}:{line}: claim '{key}' is a percent result shown "
+                        f"as bare {found}. Write '{declared:g}%' or "
+                        f"'{declared / 100:g}' so the form is unambiguous."
+                    )
+                else:
+                    problems.append(
+                        f"{rel}:{line}: claim '{key}' shows {found}, "
+                        f"results.json says {declared}"
+                    )
 
     return problems, checked
 
