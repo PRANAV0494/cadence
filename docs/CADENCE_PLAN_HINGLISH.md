@@ -219,7 +219,7 @@ Claim karo **"first open-source implementation"**, kabhi "novel idea" nahi.
 hai ki isse system *evaluable* ban jaata hai.
 
 **7. Per-user keystroke models — naya nahi, aur abhi baseline se neeche hai.** CMU pe tumhara best LOF
-<!--@cmu_lof_eer-->0.1367<!--/--> hai. Killourhy & Maxion (DSN 2009), *usi 51 subjects aur usi CSV pe jo tumhare paas hai*,
+<!--@cmu_lof_eer-->0.1367<!--/--> hai. Killourhy & Maxion (DSN 2009), *usi <!--@cmu_subjects-->51<!--/--> subjects aur usi CSV pe jo tumhare paas hai*,
 scaled Manhattan se **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->** report karte hain. Tum 2009 ke baseline se ~40% peeche ho. Isko
 reproduction batao known gap ke saath, "result" kabhi mat bolo.
 

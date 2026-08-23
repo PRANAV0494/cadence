@@ -34,7 +34,11 @@ def test_complete_config_imports(monkeypatch):
     assert mod.SECRET_KEY == "a-real-looking-key"
 
 
-@pytest.mark.parametrize("blank", ["", "   ", "	"])
+@pytest.mark.parametrize(
+    "blank",
+    ["", "   ", "\t", "\n"],
+    ids=["empty", "spaces", "tab", "newline"],
+)
 def test_empty_secret_is_treated_as_missing(monkeypatch, blank):
     env = {**COMPLETE, "JWT_SECRET_KEY": blank}
     with pytest.raises(RuntimeError, match="not set, or is empty"):

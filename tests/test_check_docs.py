@@ -330,3 +330,37 @@ def test_every_markdown_file_is_scanned():
     }
     assert on_disk <= set(scanned), f"unscanned: {on_disk - set(scanned)}"
     assert "docs/CADENCE_PLAN.md" in scanned
+
+
+# ── provenance holes the review kept flagging ──────────────────
+
+def test_zero_or_null_sample_count_is_rejected():
+    """n_subjects: 0 satisfied a presence check while saying nothing."""
+    for bad in (0, None, -3, True):
+        r = {"k": {"value": 1.0, "n_subjects": bad,
+                   "source": "README.md", "description": "d"}}
+        out = check_provenance(r, ROOT)
+        assert any("positive integer" in p for p in out), bad
+
+
+def test_empty_external_prefix_is_rejected():
+    """'external:' with nothing after it opts out of the check rather than
+    providing provenance."""
+    r = {"k": {"value": 1.0, "n_rows": 5, "source": "external:   ",
+               "description": "d"}}
+    assert any("no detail after the prefix" in p for p in check_provenance(r, ROOT))
+
+
+def test_derived_source_must_name_real_results():
+    base = {"value": 1.0, "n_rows": 5, "description": "d"}
+    good = {
+        "a": {**base, "source": "README.md"},
+        "b": {**base, "source": "derived: a"},
+    }
+    assert [p for p in check_provenance(good, ROOT) if "derived" in p] == []
+
+    bad = {"b": {**base, "source": "derived: no_such_key"}}
+    assert any("not a result" in p for p in check_provenance(bad, ROOT))
+
+    empty = {"b": {**base, "source": "derived:"}}
+    assert any("names no source results" in p for p in check_provenance(empty, ROOT))

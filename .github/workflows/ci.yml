@@ -127,70 +127,11 @@ jobs:
           echo "OK — no retracted value in notebooks."
 
       - name: No hardcoded credentials
-        run: |
-          # Implemented in Python rather than a shell regex: the previous
-          # pattern matched only ALL-CAPS names with double-quoted values, so
-          # single-quoted and unquoted assignments passed. Notebooks are no
-          # longer excluded — a key pasted into a cell leaks just as publicly.
-          python - <<'EOF'
-          import re, subprocess, sys
+        # Implemented in scripts/check_secrets.py so it can be imported by
+        # tests. An embedded heredoc could not be, and a local check that
+        # retyped the logic passed while the workflow itself was broken.
+        run: python scripts/check_secrets.py
 
-          SKIP = ("docs/", "CONTRIBUTING.md", "MANIFEST.md")
-          NAMES = r"(?:JWT_SECRET_KEY|JwtSecretKey|ADMIN_PASSWORD_HASH|AdminPasswordHash|[A-Za-z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY)[A-Za-z0-9_]*)"
-          # Value: double-quoted, single-quoted, or bare — all >= 8 chars. The
-          # bare form excludes brackets so it stops at "(", which lets the
-          # call-detection below distinguish `= _required(...)` from a literal.
-          VALUE = r"""(?:"[^"\n]{8,}"|'[^'\n]{8,}'|[^\s"'#,()\[\]{}]{8,})"""
-          ASSIGN = re.compile(rf"{NAMES}\s*[:=]\s*{VALUE}")
-          OTHER = re.compile(r"change-me-in-produc[t]ion|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----")
-          # Placeholders and references, not secrets.
-          # Config reads, template refs and placeholders are not secrets.
-          BENIGN = re.compile(r"os\.environ|getenv|process\.env|\$\{|!Ref|<[^>]+>|xxx+|\.\.\.|example|placeholder|your-|CHANGEME", re.I)
-
-          files = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.split()
-          hits = []
-          for f in files:
-              if f.startswith(SKIP) or f == ".env.example":
-                  continue
-              try:
-                  text = open(f, encoding="utf-8", errors="ignore").read()
-              except OSError:
-                  continue
-              for n, line in enumerate(text.splitlines(), 1):
-                  if BENIGN.search(line):
-                      continue
-                  m = ASSIGN.search(line)
-                  if m and line[m.end() : m.end() + 1] == "(":
-                      m = None  # the "value" is a function name: a config read
-                  if m or OTHER.search(line):
-                      hits.append(f"{f}:{n}: {line.strip()[:120]}")
-          if hits:
-              print("::error::Possible hardcoded credential:")
-              print("\n".join(hits))
-              sys.exit(1)
-          print("OK — no hardcoded credentials in tracked files.")
-          EOF
 
       - name: Deploy template ships no secret defaults
-        run: |
-          # Matching known literals only caught the mistake already made. The
-          # defect class is *any* Default on a secret parameter, since sam
-          # deploy without an override ships it. A missing template also used
-          # to pass, because grep exits 2 and `if` reads that as false.
-          test -f deploy/template.yaml || {
-            echo "::error::deploy/template.yaml is missing."; exit 1; }
-          python - <<'EOF'
-          import re, sys
-
-          text = open("deploy/template.yaml", encoding="utf-8").read()
-          bad = []
-          for name in ("JwtSecretKey", "AdminUsername", "AdminPasswordHash"):
-              block = re.search(rf"^  {name}:\n((?:    .*\n|\n)*)", text, re.MULTILINE)
-              if block and re.search(r"^    Default:", block.group(1), re.MULTILINE):
-                  bad.append(name)
-          if bad:
-              print(f"::error::Secret parameters carry a Default: {', '.join(bad)}. "
-                    f"sam deploy without an override would ship it.")
-              sys.exit(1)
-          print("OK — no Default on any secret parameter.")
-          EOF
+        run: python scripts/check_deploy_template.py

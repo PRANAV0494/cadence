@@ -77,6 +77,19 @@
       "unit": "people",
       "source": "private:data/private/keystroke_export_20260513.csv",
       "description": "Distinct consenting participants in the collection study."
+    },
+    "cmu_subjects": {
+      "value": 51,
+      "unit": "people",
+      "source": "external: Killourhy & Maxion, DSN 2009, Section 3 (subject pool)",
+      "description": "Subjects in the CMU DSL-StrongPasswordData benchmark. Every per-user EER in this table is computed across all of them."
+    },
+    "cmu_gap_to_baseline_percent": {
+      "value": 42.4,
+      "unit": "percent",
+      "n_subjects": 51,
+      "source": "derived: cmu_lof_eer, cmu_baseline_scaled_manhattan_eer",
+      "description": "How far our best EER sits above the published baseline: 0.1367 / 0.096 - 1. Stated as ~40% before, which understated it."
     }
   }
 }

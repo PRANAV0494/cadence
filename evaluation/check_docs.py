@@ -81,8 +81,11 @@ RETRACTED = {
 }
 
 # Sources that legitimately do not resolve to a path in this repository:
-# published work, and files excluded from version control.
-EXTERNAL_PREFIXES = ("external:", "private:")
+# published work, files excluded from version control, and values computed from
+# other declared results. "derived:" must name those results, so a computed
+# number still points somewhere checkable instead of citing this file itself.
+EXTERNAL_PREFIXES = ("external:", "private:", "derived:")
+DERIVED_PREFIX = "derived:"
 
 
 def load_results() -> dict:
@@ -115,7 +118,19 @@ def check_provenance(results: dict, root: Path = ROOT) -> list[str]:
         source = r.get("source")
         if not source:
             problems.append(f"{key}: no 'source' — cannot be traced to a computation")
-        elif not source.startswith(EXTERNAL_PREFIXES):
+        elif source.startswith(DERIVED_PREFIX):
+            names = [n.strip() for n in source[len(DERIVED_PREFIX):].split(",") if n.strip()]
+            if not names:
+                problems.append(f"{key}: 'derived:' names no source results")
+            for n in names:
+                if n not in results:
+                    problems.append(f"{key}: derived from {n!r}, which is not a result")
+        elif source.startswith(EXTERNAL_PREFIXES):
+            # An 'external:' or 'private:' marker with nothing after it is not
+            # provenance, it is an opt-out from the check.
+            if not source.split(":", 1)[1].strip():
+                problems.append(f"{key}: source {source!r} has no detail after the prefix")
+        else:
             target = root / source.split("#", 1)[0]  # strip an anchor like #cell-11
             if not target.exists():
                 problems.append(
@@ -124,8 +139,14 @@ def check_provenance(results: dict, root: Path = ROOT) -> list[str]:
                 )
 
         # A counting unit describes a population; every other result needs an n.
-        if r.get("unit") != "people" and not any(k.startswith("n_") for k in r):
+        counts = {k: v for k, v in r.items() if k.startswith("n_")}
+        if r.get("unit") != "people" and not counts:
             problems.append(f"{key}: no sample count (n_subjects / n_rows)")
+        for name, n in counts.items():
+            # n_subjects: 0 or null satisfied a presence check while telling the
+            # reader nothing. A sample count has to be a positive number.
+            if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+                problems.append(f"{key}: {name} is {n!r}; a sample count must be a positive integer")
     return problems
 
 

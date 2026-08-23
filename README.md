@@ -65,7 +65,7 @@ Unmodified web app ◄───────────────────�
 ## Honest status
 
 **What works today:** the feature extractor (34 timing features, pure stdlib), a deployed
-FastAPI/Lambda/DynamoDB collection backend, per-user identity baselines on 51 CMU subjects, and one
+FastAPI/Lambda/DynamoDB collection backend, per-user identity baselines on <!--@cmu_subjects-->51<!--/--> CMU subjects, and one
 CPU-loadable network model.
 
 **What's being rebuilt:** the capture SDK (a key-matching bug corrupted all dwell-derived features —
@@ -77,13 +77,13 @@ not predictions).
 
 | Method | Dataset | EER | n |
 |---|---|---|---|
-| Killourhy & Maxion 2009, scaled Manhattan | CMU DSL-StrongPasswordData | **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->** | 51 subjects |
-| This work — Local Outlier Factor | CMU DSL-StrongPasswordData | <!--@cmu_lof_eer-->0.1367<!--/--> | 51 subjects |
-| This work — One-Class SVM | CMU DSL-StrongPasswordData | <!--@cmu_ocsvm_eer-->0.1375<!--/--> | 51 subjects |
-| This work — Isolation Forest | CMU DSL-StrongPasswordData | <!--@cmu_isolation_forest_eer-->0.1532<!--/--> | 51 subjects |
+| Killourhy & Maxion 2009, scaled Manhattan | CMU DSL-StrongPasswordData | **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->** | <!--@cmu_subjects-->51<!--/--> subjects |
+| This work — Local Outlier Factor | CMU DSL-StrongPasswordData | <!--@cmu_lof_eer-->0.1367<!--/--> | <!--@cmu_subjects-->51<!--/--> subjects |
+| This work — One-Class SVM | CMU DSL-StrongPasswordData | <!--@cmu_ocsvm_eer-->0.1375<!--/--> | <!--@cmu_subjects-->51<!--/--> subjects |
+| This work — Isolation Forest | CMU DSL-StrongPasswordData | <!--@cmu_isolation_forest_eer-->0.1532<!--/--> | <!--@cmu_subjects-->51<!--/--> subjects |
 
 One-Class SVM significantly outperforms Isolation Forest (paired *t*-test, t = <!--@cmu_if_vs_ocsvm_t_statistic-->3.11<!--/-->, p = <!--@cmu_if_vs_ocsvm_p_value-->0.003<!--/-->).
-We are currently **~40% behind a 2009 baseline** — this is a reproduction with a known gap, not a
+We are currently **<!--@cmu_gap_to_baseline_percent-->42%<!--/--> behind a 2009 baseline** — this is a reproduction with a known gap, not a
 result.
 
 ## Limitations

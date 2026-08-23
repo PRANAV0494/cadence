@@ -207,8 +207,8 @@ implementation"**, never "novel idea".
 making the system *evaluable*.
 
 **7. Per-user keystroke models — not novel, and currently below baseline.** Your best CMU result is
-LOF at <!--@cmu_lof_eer-->0.1367<!--/-->. Killourhy & Maxion (DSN 2009), on *the same 51 subjects and the same CSV you have*,
-report scaled Manhattan at **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->**. You are ~40% worse than a 2009 baseline. Report as a
+LOF at <!--@cmu_lof_eer-->0.1367<!--/-->. Killourhy & Maxion (DSN 2009), on *the same <!--@cmu_subjects-->51<!--/--> subjects and the same CSV you have*,
+report scaled Manhattan at **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->**. You are <!--@cmu_gap_to_baseline_percent-->42%<!--/--> worse than a 2009 baseline. Report as a
 reproduction with a known gap, never as a result.
 
 **8. The 6-dataset IDS zoo and "SHAP explanations" — zero novelty, and the SHAP claim isn't true.**

@@ -101,16 +101,30 @@ def test_modifier_keys_survive_transport_and_are_excluded_from_timing(client):
     """`is_modifier` must reach the extractor, or Shift re-inflates dwell."""
     events = sdk_events(
         """
-        down('ShiftLeft','Shift'); advance(40);
-        down('KeyA','A');          advance(85);
-        up('KeyA','A');            advance(195);
-        up('ShiftLeft','Shift');
+        for (let i = 0; i < 4; i++) {
+          down('ShiftLeft','Shift'); advance(40);
+          down('KeyA','A');          advance(85);
+          up('KeyA','A');            advance(195);
+          up('ShiftLeft','Shift');
+        }
         """
     )
     assert any(e["is_modifier"] for e in events)
 
     r = client.post("/api/submit", json=payload(events))
     assert r.status_code == 201, r.text
+
+    # A 201 alone would also pass if is_modifier were dropped in transit and
+    # the 320 ms Shift hold counted as a character. Assert on the numbers.
+    summary = r.json()["features_summary"]
+    # Four capitals typed over ~1.28 s: with Shift counted the character total
+    # doubles and WPM roughly doubles with it.
+    assert 0 < summary["typing_speed_wpm"] < 100, summary
+    letters_only_wpm = (4 / 5.0) / (summary["total_duration_ms"] / 60000.0)
+    assert abs(summary["typing_speed_wpm"] - letters_only_wpm) < 0.5, (
+        f"WPM {summary['typing_speed_wpm']} does not match the four letter "
+        f"presses ({letters_only_wpm:.2f}); modifiers are being counted."
+    )
 
 
 def test_legacy_key_index_payload_is_rejected(client):

@@ -41,9 +41,13 @@ class KeystrokeEvent(BaseModel):
     is_modifier: bool = Field(
         False,
         description=(
-            "Shift, Control, Alt and friends. Recorded but excluded from timing "
-            "statistics: a Shift held across a capital letter dwells far longer "
-            "than the letter, and counting it as a character inflates WPM."
+            "True for any key that produces no character — not only Shift, "
+            "Control and Alt but also Tab, Escape, Enter, Delete, the arrow "
+            "keys and F1-F12. The name is narrower than the meaning, kept for "
+            "wire compatibility; read it as 'produced no character'. These are "
+            "recorded but excluded from timing statistics, because a Shift held "
+            "across a capital letter dwells far longer than the letter and "
+            "counting it as a character inflates typing speed."
         ),
     )
     is_paste: bool = False
