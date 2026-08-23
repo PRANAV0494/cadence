@@ -35,6 +35,7 @@ def _character_keydowns(events: list[dict]) -> list[dict]:
         if e.get("event_type") == "keydown"
         and not e.get("is_modifier")
         and not e.get("is_paste")
+        and not e.get("is_backspace")
     ]
     downs.sort(key=lambda e: e.get("timestamp", 0))
     return downs
@@ -47,7 +48,12 @@ def dwell_times(events: list[dict]) -> list[float]:
         down_by_seq[e.get("seq")] = float(e.get("timestamp", 0))
     dwells = []
     for e in events:
-        if e.get("event_type") != "keyup" or e.get("is_modifier") or e.get("is_paste"):
+        if (
+            e.get("event_type") != "keyup"
+            or e.get("is_modifier")
+            or e.get("is_paste")
+            or e.get("is_backspace")
+        ):
             continue
         seq = e.get("seq")
         if seq in down_by_seq:

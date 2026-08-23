@@ -135,6 +135,23 @@ def test_abrupt_step_slowdown_is_drift():
     assert result["drift"] is True, result
 
 
+def test_backspaces_do_not_enter_dwell_or_flight():
+    """Backspace presses are not typed characters (the provenance rule):
+    excluded from character keydowns and from dwell matching."""
+    stream = _human(n=80, seed=31)
+    bs = [
+        {"event_type": "keydown", "seq": 9000 + i, "is_modifier": False,
+         "is_paste": False, "is_backspace": True, "key": "Backspace",
+         "timestamp": 100000.0 + i * 10.0}
+        for i in range(15)
+    ]
+    clean = drift_signal(stream)
+    polluted = drift_signal(stream + bs)
+    assert clean is not None and polluted is not None
+    assert polluted["dwell_d"] == clean["dwell_d"]
+    assert polluted["flight_d"] == clean["flight_d"]
+
+
 # ── insufficient data ──────────────────────────────────────────
 
 def test_short_session_returns_none():
