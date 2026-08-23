@@ -309,20 +309,6 @@ def _run_node(script_body: str) -> dict:
 
 @node
 def test_drain_hands_off_and_continues_seq():
-    script = (
-        "const sdk = require(" + json.dumps(str(EDGE / "cadence-sdk.js")) + ");\n"
-        "const { createRecorder, flush } = sdk;\n"
-        "let now = 0; performance.now = () => now;\n"
-        + script_body
-    )
-    out = subprocess.run(
-        ["node", "-e", script], capture_output=True, text=True, timeout=30
-    )
-    assert out.returncode == 0, f"node failed: {out.stderr}"
-    return json.loads(out.stdout)
-
-
-def test_drain_hands_off_and_continues_seq():
     data = _run_node(
         """
         const r = createRecorder();
