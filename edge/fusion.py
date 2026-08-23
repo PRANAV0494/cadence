@@ -35,10 +35,14 @@ import math
 ALPHA = 0.05
 BETA = 0.10
 
-# Measured detector reliabilities: (true positive rate, false positive rate)
-# on labelled streams. These are the measured CMU-era numbers from
-# evaluation/results.json where available, engineering estimates otherwise;
-# they are inputs, not tunables — recalibrate with data, not opinions.
+# PLACEHOLDER detector reliabilities: (true positive rate, false positive
+# rate). These are engineering estimates, NOT measurements - no labelled
+# run has produced them, and nothing in evaluation/results.json backs
+# them. They set the per-signal evidence weight; wrong numbers make the
+# walk over- or under-eager. Replacing them with rates measured on a real
+# labelled corpus is required before any deployment claim. This comment
+# says placeholder because an earlier draft claimed 'measured' - exactly
+# the class of unsupported claim this repository's CI exists to catch.
 DETECTOR_RATES = {
     "automation": (0.90, 0.02),   # synthetic streams: flags 90%, humans 2%
     "drift": (0.70, 0.05),        # driver changes: 70%, same-typist: 5%

@@ -132,6 +132,15 @@ def test_none_contributes_zero():
 
 # ── decision function ──────────────────────────────────────────
 
+def test_rates_are_declared_placeholders():
+    """The rates are engineering estimates until a labelled run replaces
+    them; the module must say so - an earlier comment claimed 'measured'
+    and this repo fails CI for that class of claim."""
+    import fusion
+
+    assert "PLACEHOLDER" in Path(fusion.__file__).read_text(encoding="utf-8")
+
+
 def test_decide_at_and_past_bounds():
     lo, hi = bounds()
     assert decide(hi) == "step-up"
