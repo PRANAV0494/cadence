@@ -64,7 +64,8 @@ def _html_flow(csp=None):
 
 
 def _sha256_token(data: bytes) -> str:
-    return "sha256-" + base64.b64encode(hashlib.sha256(data).digest()).decode("ascii")
+    """Quoted, as CSP grammar requires: 'sha256-<b64>'."""
+    return "'sha256-" + base64.b64encode(hashlib.sha256(data).digest()).decode("ascii") + "'"
 
 
 # ── hash correctness, pinned against real inject() output ──────
@@ -146,3 +147,37 @@ def test_policy_without_script_governance_is_untouched():
         flow.response.headers.get("Content-Security-Policy")
         == "img-src 'self'; style-src 'self'"
     )
+
+
+def test_unsafe_inline_means_no_hash_appended():
+    """
+    CSP2+ turns 'unsafe-inline' OFF on a directive once any hash/nonce
+    appears in it. Appending hashes to a policy that relies on
+    'unsafe-inline' would break the page's own inline scripts — while
+    adding nothing, since 'unsafe-inline' already permits ours.
+    """
+    addon = _load_addon()
+    original = "script-src 'self' 'unsafe-inline'"
+    flow = _html_flow(original)
+    addon.addons[0].response(flow)
+
+    assert flow.response.headers.get("Content-Security-Policy") == original
+    assert "sha256" not in flow.response.headers.get("Content-Security-Policy")
+
+
+def test_unsafe_inline_in_an_untargeted_directive_still_gets_hashes():
+    """The skip decision is on the governing directive only."""
+    addon = _load_addon()
+    flow = _html_flow("img-src 'self' 'unsafe-inline'; script-src 'self'")
+    addon.addons[0].response(flow)
+
+    csp = flow.response.headers.get("Content-Security-Policy")
+    for token in csp_hashes(SDK):
+        assert token in csp
+    assert "img-src 'self' 'unsafe-inline'" in csp  # untouched
+
+
+def test_hashes_are_single_quoted():
+    """Unquoted sha256-... tokens are ignored by browsers."""
+    for token in csp_hashes(SDK):
+        assert token.startswith("'sha256-") and token.endswith("'")

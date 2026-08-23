@@ -36,11 +36,15 @@ def script_bodies(sdk_source: str) -> list[bytes]:
 
 
 def csp_hashes(sdk_source: str) -> list[str]:
-    """sha256-... CSP hash tokens for both injected scripts, in order."""
+    """Quoted sha256 CSP hash tokens for both injected scripts, in order.
+
+    CSP grammar requires the single quotes: 'sha256-<b64>'. Unquoted, the
+    token is ignored and the script stays blocked.
+    """
     tokens = []
     for body in script_bodies(sdk_source):
         digest = hashlib.sha256(body).digest()
-        tokens.append("sha256-" + base64.b64encode(digest).decode("ascii"))
+        tokens.append("'sha256-" + base64.b64encode(digest).decode("ascii") + "'")
     return tokens
 
 

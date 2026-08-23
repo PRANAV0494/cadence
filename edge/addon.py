@@ -217,6 +217,12 @@ class CadenceAddon:
             # A policy with neither script-src nor default-src cannot govern
             # scripts; nothing to extend.
             return
+        # CSP2+ deactivates 'unsafe-inline' on a directive the moment any
+        # hash or nonce appears in it. If the governing directive already
+        # allows inline scripts, appending our hashes would BREAK the page's
+        # own inline scripts while adding nothing: they already permit ours.
+        if "'unsafe-inline'" in directives[target]:
+            return
         existing = directives[target]
         additions = [h for h in SDK_HASHES if h not in existing]
         if not additions:
