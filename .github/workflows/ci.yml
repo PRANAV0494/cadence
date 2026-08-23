@@ -137,8 +137,10 @@ jobs:
 
           SKIP = ("docs/", "CONTRIBUTING.md", "MANIFEST.md")
           NAMES = r"(?:JWT_SECRET_KEY|JwtSecretKey|ADMIN_PASSWORD_HASH|AdminPasswordHash|[A-Za-z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY)[A-Za-z0-9_]*)"
-          # value: double-quoted, single-quoted, or bare — all >= 8 chars
-          VALUE = r"""(?:"[^"\n]{8,}"|'[^'\n]{8,}'|[^\s"'#,)\]}]{8,})"""
+          # Value: double-quoted, single-quoted, or bare — all >= 8 chars. The
+          # bare form excludes brackets so it stops at "(", which lets the
+          # call-detection below distinguish `= _required(...)` from a literal.
+          VALUE = r"""(?:"[^"\n]{8,}"|'[^'\n]{8,}'|[^\s"'#,()\[\]{}]{8,})"""
           ASSIGN = re.compile(rf"{NAMES}\s*[:=]\s*{VALUE}")
           OTHER = re.compile(r"change-me-in-produc[t]ion|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----")
           # Placeholders and references, not secrets.
