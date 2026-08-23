@@ -33,13 +33,19 @@ MIN_EVENTS = 10
 
 
 def character_keydowns(events: list[dict]) -> list[dict]:
-    """Character-producing keydowns in timestamp order."""
+    """Character-producing keydowns in timestamp order.
+
+    Backspaces are excluded with the same rule provenance uses: a backspace
+    is not a typed character, and counting it as one would let a machine
+    interleave deletions and still count as 'human-jittered' intervals.
+    """
     downs = [
         e
         for e in events
         if e.get("event_type") == "keydown"
         and not e.get("is_modifier")
         and not e.get("is_paste")
+        and not e.get("is_backspace")
     ]
     downs.sort(key=lambda e: e.get("timestamp", 0))
     return downs

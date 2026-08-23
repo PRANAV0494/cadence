@@ -15,6 +15,7 @@ sys.path.insert(0, str(EDGE))
 
 from automation import (  # noqa: E402
     CV_THRESHOLD,
+    character_keydowns,
     MIN_EVENTS,
     UNIQUE_FRACTION_THRESHOLD,
     automation_metrics,
@@ -83,6 +84,26 @@ def test_modifiers_and_pastes_are_excluded():
         {"event_type": "keyup", "timestamp": 3.0},
     ] * 5
     assert is_automated(stream + noise) is True  # noise does not dilute
+
+
+def test_backspaces_are_excluded_from_intervals():
+    """A synthetic stream plus backspace events still flags, and backspaces
+    never appear in the interval series."""
+    stream = synthetic_stream()
+    backspaces = [
+        {
+            "event_type": "keydown",
+            "is_modifier": False,
+            "is_paste": False,
+            "is_backspace": True,
+            "key": "Backspace",
+            "timestamp": 50.5 + i,
+        }
+        for i in range(10)
+    ]
+    assert is_automated(stream + backspaces) is True
+    ts = [e["timestamp"] for e in character_keydowns(stream + backspaces)]
+    assert all(t not in ts for t in [e["timestamp"] for e in backspaces])
 
 
 def test_one_pause_makes_a_machine_look_human_on_cv():
