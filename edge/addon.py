@@ -125,7 +125,13 @@ class CadenceAddon:
         self._enforce_provenance(flow)
 
     def _accumulate(self, key: str, events: list[dict]) -> None:
-        """Fold one telemetry round's detector verdicts into the SPRT walk."""
+        """Fold one telemetry round's detector verdicts into the SPRT walk.
+
+        Once the walk has said step-up, only a terminal 'clean' decision
+        clears it: an intermediate 'continue' after more evidence must not
+        lift the challenge, because the evidence that crossed the bound is
+        still in the sum.
+        """
         signals = {
             "automation": is_automated(events),
             "drift": (drift_signal(events) or {}).get("drift"),
@@ -133,7 +139,11 @@ class CadenceAddon:
         }
         state = update(score.get(key, 0.0), signals)
         score[key] = state["llr"]
-        decisions[key] = state["decision"]
+        if decisions.get(key) == "step-up":
+            if state["decision"] != "clean":
+                decisions[key] = "step-up"  # sticky: only clean clears
+        else:
+            decisions[key] = state["decision"]
 
     def _maybe_step_up(self, flow) -> bool:
         """401 + WWW-Authenticate (RFC 9470) when the fusion score says so.
@@ -148,14 +158,18 @@ class CadenceAddon:
             return False
         from mitmproxy import http
 
+        # RFC 9470 (OAuth 2.0 Step Up Authentication Challenge Protocol):
+        # a Bearer challenge with error=insufficient_user_authentication
+        # and acr_values naming the assurance level required.
         flow.response = http.Response.make(
             401,
             b"cadence: step-up authentication required for this session.\n",
             {
                 "Content-Type": "text/plain",
                 "WWW-Authenticate": (
-                    'Step-up realm="cadence", '
-                    'reason="behavioral score exceeded the step-up bound"'
+                    'Bearer error="insufficient_user_authentication", '
+                    'error_description="behavioral score exceeded the step-up bound", '
+                    'acr_values="cadence-behavioral-verified"'
                 ),
             },
         )

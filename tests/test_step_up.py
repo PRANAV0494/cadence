@@ -143,8 +143,11 @@ def test_machine_session_gets_401_with_challenge(monkeypatch):
     assert flow.response is not None
     assert flow.response.status_code == 401
     challenge = flow.response.headers.get("WWW-Authenticate")
-    assert challenge and challenge.startswith("Step-up")
-    assert "realm=" in challenge and "reason=" in challenge
+    # RFC 9470: Bearer challenge, error=insufficient_user_authentication,
+    # acr_values naming the required assurance level.
+    assert challenge and challenge.startswith("Bearer")
+    assert 'error="insufficient_user_authentication"' in challenge
+    assert "acr_values=" in challenge
 
 
 def test_human_session_is_untouched(monkeypatch):
@@ -178,6 +181,41 @@ def test_step_up_is_sticky_for_the_session(monkeypatch):
         addon.addons[0].request(flow)
         assert flow.response is not None
         assert flow.response.status_code == 401
+
+
+def test_step_up_survives_a_continue_round(monkeypatch):
+    """A later round landing on 'continue' must NOT lift the 401: only a
+    terminal clean decision clears it. The evidence that crossed the bound
+    is still in the sum."""
+    import random
+    addon = _load_addon()
+    addon.sessions.clear()
+    addon.score.clear()
+    addon.decisions.clear()
+    _fake_mitmproxy(monkeypatch)
+
+    r1, r2 = _attack_session()
+    addon.addons[0].request(_telemetry(r1))
+    addon.addons[0].request(_telemetry(r2))
+    assert addon.decisions["s1"] == "step-up"
+
+    # A short mixed/human burst: some honest evidence, nowhere near clean.
+    rng = random.Random(99)
+    humanish = []
+    t = max(e["timestamp"] for e in r2) + 700.0
+    for i in range(20):
+        humanish.append({"event_type": "keydown", "seq": 500 + i, "is_modifier": False,
+                         "is_paste": False, "key": "a", "timestamp": t})
+        humanish.append({"event_type": "keyup", "seq": 500 + i, "is_modifier": False,
+                         "is_paste": False, "key": "a", "timestamp": t + rng.uniform(60, 120)})
+        t += rng.uniform(70, 200)
+    addon.addons[0].request(_telemetry(humanish))
+    assert addon.decisions["s1"] == "step-up"  # not lifted by continue
+
+    flow = _page_request()
+    addon.addons[0].request(flow)
+    assert flow.response is not None
+    assert flow.response.status_code == 401
 
 
 def test_score_state_survives_across_requests(monkeypatch):
