@@ -96,3 +96,59 @@ def test_cli_proxy_without_mitmdump_exits_2(monkeypatch, capsys):
         cli.main(["proxy"])
     assert exc.value.code == 2
     assert "cadence[proxy]" in capsys.readouterr().err
+
+
+# ── addon.response() with a duck-typed flow ────────────────────
+
+class _Headers(dict):
+    """Dict with case-insensitive-ish delete, like mitmproxy's headers."""
+
+    def get(self, key, default=None):
+        for k, v in self.items():
+            if k.lower() == key.lower():
+                return v
+        return default
+
+
+class _Response:
+    def __init__(self, content, content_type):
+        self.content = content
+        self.headers = _Headers({"Content-Type": content_type, "Content-Length": "999"})
+
+
+class _Flow:
+    def __init__(self, content, content_type):
+        self.response = _Response(content, content_type)
+
+
+def _load_addon():
+    sys.path.insert(0, str(EDGE))
+    import addon  # noqa: E402
+    return addon
+
+
+def test_addon_injects_into_html_flow():
+    addon = _load_addon()
+    flow = _Flow(b"<html><body><p>hi</p></body></html>", "text/html; charset=utf-8")
+    addon.addons[0].response(flow)
+    assert b'id="cadence-sdk"' in flow.response.content
+    assert flow.response.headers.get("Content-Length") is None  # recalculated by the proxy
+
+
+def test_addon_skips_non_html_flow():
+    addon = _load_addon()
+    original = b'{"a": 1}'
+    flow = _Flow(original, "application/json")
+    addon.addons[0].response(flow)
+    assert flow.response.content is original
+
+
+def test_addon_skips_flow_without_response():
+    addon = _load_addon()
+
+    class _NoResponse:
+        response = None
+
+    flow = _NoResponse()
+    addon.addons[0].response(flow)  # must not raise
+
