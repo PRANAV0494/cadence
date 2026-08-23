@@ -31,6 +31,8 @@ venv/
 # --- env / secrets ---
 .env
 .env.*
+# the template is committed; real values never are
+!.env.example
 *.pem
 samconfig.local.toml
 
