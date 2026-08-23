@@ -2,19 +2,66 @@
 Pydantic models for request/response validation.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import List, Optional, Dict, Any
 
 
 class KeystrokeEvent(BaseModel):
-    """A single keystroke event captured from the frontend."""
-    key: str
+    """
+    A single keystroke event, as emitted by edge/cadence-sdk.js.
+
+    The previous schema keyed events by `key_index`, a caret position. That is
+    not key identity — the caret sits before the inserted character on keydown
+    and after it on keyup — so pairing on it matched every press with the
+    previous character's release, and 85% of collected human dwell times came
+    out negative. `seq` replaces it: a monotonic counter stamped on keydown and
+    echoed on the matching keyup, which survives key rollover.
+
+    A payload carrying `key_index` is from a client predating that fix; its
+    dwell-derived features are unusable, so submission is rejected rather than
+    silently stored.
+    """
+
     event_type: str = Field(..., description="keydown or keyup")
     timestamp: float = Field(..., description="performance.now() value in ms")
-    key_index: int = Field(..., description="Position index in the target string")
-    key_class: str = Field(..., description="letter, number, special, or shift")
+    seq: Optional[int] = Field(
+        None,
+        description=(
+            "Press identity: monotonic counter assigned on keydown, echoed on "
+            "the matching keyup. Null on a keyup whose keydown was not captured."
+        ),
+    )
+    code: Optional[str] = Field(
+        None, description="event.code — the physical key, layout independent"
+    )
+    key: Optional[str] = Field(
+        None, description="event.key — the character produced, null for paste"
+    )
     is_backspace: bool = False
+    is_modifier: bool = Field(
+        False,
+        description=(
+            "Shift, Control, Alt and friends. Recorded but excluded from timing "
+            "statistics: a Shift held across a capital letter dwells far longer "
+            "than the letter, and counting it as a character inflates WPM."
+        ),
+    )
     is_paste: bool = False
+    pasted_length: Optional[int] = Field(
+        None, description="Character count of a paste. The content is never sent."
+    )
+    is_trusted: Optional[bool] = Field(
+        None, description="event.isTrusted — false for synthesised input."
+    )
+
+    @field_validator("event_type")
+    @classmethod
+    def _known_event_type(cls, v: str) -> str:
+        if v not in {"keydown", "keyup"}:
+            raise ValueError(f"event_type must be 'keydown' or 'keyup', got {v!r}")
+        return v
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class SubmissionPayload(BaseModel):

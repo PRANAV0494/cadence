@@ -12,12 +12,29 @@ from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # ── Configuration ──────────────────────────────────────────────
-SECRET_KEY = os.environ["JWT_SECRET_KEY"]  # no default: fail fast if unset
+# No defaults. A shared fallback signing key is how this deployment previously
+# shipped its production secret: the value was a CloudFormation parameter
+# default, so `sam deploy` without an override signed real tokens with a string
+# published in the repository. Failing to start is the safe behaviour.
+
+
+def _required(name: str) -> str:
+    try:
+        return os.environ[name]
+    except KeyError:
+        raise RuntimeError(
+            f"{name} is not set. Configuration comes from the environment; there "
+            f"are deliberately no defaults. Copy .env.example to .env and fill it "
+            f"in, or export {name} before starting the API."
+        ) from None
+
+
+SECRET_KEY = _required("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("TOKEN_EXPIRE_MINUTES", "60"))
 
-ADMIN_USERNAME = os.environ["ADMIN_USERNAME"]
-ADMIN_PASSWORD_HASH = os.environ["ADMIN_PASSWORD_HASH"]
+ADMIN_USERNAME = _required("ADMIN_USERNAME")
+ADMIN_PASSWORD_HASH = _required("ADMIN_PASSWORD_HASH")
 
 # ── Password hashing ──────────────────────────────────────────
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

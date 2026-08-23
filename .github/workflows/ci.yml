@@ -31,7 +31,11 @@ jobs:
           node-version: "20"
 
       - name: Install test dependencies
-        run: python -m pip install --quiet pytest
+        # The API tests exercise real endpoints through TestClient, so the
+        # runtime dependencies are required, not just the test runner.
+        run: |
+          python -m pip install --quiet pytest httpx
+          python -m pip install --quiet -r deploy/requirements.txt
 
       - name: Verify Node is present
         run: |

@@ -26,23 +26,23 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
-from app.models import (
+from cadence.api.models import (
     SubmissionPayload,
     AdminLoginRequest,
     AdminLoginResponse,
     PhraseCreateRequest,
     PhraseUpdateRequest,
 )
-from app.auth import authenticate_admin, create_access_token, verify_token
-from app.features import extract_features
-from app.db import (
+from cadence.api.auth import authenticate_admin, create_access_token, verify_token
+from cadence.features.keystroke import CorruptEventStreamError, extract_features
+from cadence.api.db import (
     store_session,
     get_dashboard_stats,
     query_sessions,
     get_session_detail,
 )
-from app.csv_export import build_csv
-from app.phrases_db import (
+from cadence.api.csv_export import build_csv
+from cadence.api.phrases_db import (
     create_phrase,
     update_phrase,
     delete_phrase,
@@ -124,7 +124,25 @@ async def submit_keystroke_data(payload: SubmissionPayload):
         raise HTTPException(status_code=400, detail="No keystroke events provided")
 
     events = [e.model_dump() for e in payload.events]
-    features = extract_features(events)
+
+    try:
+        features = extract_features(events)
+    except CorruptEventStreamError as exc:
+        # A client sending events we cannot pair correctly is a client error.
+        # Storing the resulting features would repeat the original mistake:
+        # 85% of the first collection round has negative dwell times because
+        # nothing rejected them at ingest.
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unusable_event_stream",
+                "message": str(exc),
+                "remedy": (
+                    "Update the client to edge/cadence-sdk.js, which stamps each "
+                    "keydown with a 'seq' and echoes it on the matching keyup."
+                ),
+            },
+        ) from exc
 
     backspace_count = sum(1 for e in events if e.get("is_backspace") and e["event_type"] == "keydown")
     paste_detected = any(e.get("is_paste") for e in events)
