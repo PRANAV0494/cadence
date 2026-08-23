@@ -1,0 +1,26 @@
+{
+  "participant": "p063",
+  "n_sessions": 223,
+  "n_features": 15,
+  "feature_names": [
+    "hold_mean",
+    "hold_std",
+    "dd_mean",
+    "dd_std",
+    "du_mean",
+    "du_std",
+    "ud_mean",
+    "ud_std",
+    "uu_mean",
+    "uu_std",
+    "typing_speed",
+    "consistency_ratio",
+    "dd_max",
+    "dd_min",
+    "dd_range"
+  ],
+  "eer": 0.3758,
+  "eer_threshold": 0.08628,
+  "model_type": "IsolationForest",
+  "dataset": "KeyRecs_free-text"
+}

@@ -1,0 +1,114 @@
+# CADENCE
+
+**Continuous attestation of *who is driving* an authenticated web session.**
+
+> ⚠️ **Status: early research prototype, under active development.** Nothing here is production
+> ready, and the numbers below are baselines being re-measured — see [Honest status](#honest-status).
+
+---
+
+## The problem
+
+Every authentication control fires **once, at the door**. Passwords, MFA, CAPTCHA, device
+fingerprinting, IP reputation, Web Bot Auth — all of them verify at login and then go quiet.
+
+So consider an adversary who is *already past login*: same session cookie, same device, same IP,
+same browser fingerprint, same TLS fingerprint. A hijacked session. A shared workstation. Or — the
+2026 case — an AI agent that takes over the browser a human already authenticated.
+
+Every one of those controls sees **nothing change**. That blind window is what CADENCE addresses.
+
+## The approach
+
+CADENCE runs as a transparent proxy in front of an unmodified web app and continuously asks three
+questions about whoever is currently driving the session:
+
+| Detector | Question | Method |
+|---|---|---|
+| **Provenance** | Was the text the server received actually produced by the keystrokes we observed? | Deterministic reconciliation, **server-side at the proxy** |
+| **Identity drift** | Has the driver changed *since login*? | Within-session change-point detection against a per-user baseline |
+| **Automation** | Does the input timing look synthesised? | Gradient-boosted model over timing + provenance features |
+
+Evidence from each is combined by a **calibrated sequential log-likelihood-ratio accumulator**
+(Wald's SPRT), so thresholds derive from a target error rate rather than hand-tuned weights — and
+the headline metric becomes *time-to-detect*: how many keystrokes until the system is confident.
+
+**The load-bearing design decision:** reconciliation happens at the proxy, not in the injected
+JavaScript. The proxy sees both the telemetry stream *and* the form POST. An adversary who patches
+or suppresses the in-page SDK produces a submission with no supporting keystrokes — which is itself
+the detection. To evade, an agent must forge telemetry *consistent with what it submits*, which
+forces it into the timing model.
+
+## Architecture
+
+```
+Unmodified web app ◄──────────────────────────────┐
+        ▲                                         │
+        │  (traffic passes through untouched)     │
+┌───────┴─────────────────────────────────────────┴───────┐
+│  edge/          mitmproxy addon                         │
+│   · injects cadence-sdk.js into HTML responses          │
+│   · reconciles POST bodies against telemetry            │
+│   · enforces step-up via RFC 9470                       │
+└───────┬─────────────────────────────────────────────────┘
+        │ telemetry                          ▲ verdict
+        ▼                                    │
+┌────────────────────────────────────────────┴────────────┐
+│  cadence/                                               │
+│   features/    one extractor, shared train + serve       │
+│   detectors/   provenance · identity · automation        │
+│   fusion/      sequential log-LR (SPRT)                  │
+│   policy/      RFC 9470 challenge · CAEP events          │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Honest status
+
+**What works today:** the feature extractor (34 timing features, pure stdlib), a deployed
+FastAPI/Lambda/DynamoDB collection backend, per-user identity baselines on 51 CMU subjects, and one
+CPU-loadable network model.
+
+**What's being rebuilt:** the capture SDK (a key-matching bug corrupted all dwell-derived features —
+85% of recorded human dwell times are negative), the proxy edge (the original Burp extension doesn't
+load), the fusion layer (hand-tuned constants), and the evaluation harness (it scored HTTP responses,
+not predictions).
+
+**Current keystroke baseline, and the one it loses to:**
+
+| Method | Dataset | EER | n |
+|---|---|---|---|
+| Killourhy & Maxion 2009, scaled Manhattan | CMU DSL-StrongPasswordData | **0.0962** | 51 subjects |
+| This work — Local Outlier Factor | CMU DSL-StrongPasswordData | 0.1367 | 51 subjects |
+| This work — One-Class SVM | CMU DSL-StrongPasswordData | 0.1375 | 51 subjects |
+| This work — Isolation Forest | CMU DSL-StrongPasswordData | 0.1532 | 51 subjects |
+
+One-Class SVM significantly outperforms Isolation Forest (paired *t*-test, t = 3.11, p = 0.003).
+We are currently **~40% behind a 2009 baseline** — this is a reproduction with a known gap, not a
+result.
+
+## Limitations
+
+- The SDK runs in the adversary's DOM and **can be patched**. Server-side reconciliation raises the
+  cost of evasion; it does not eliminate the attack.
+- An agent that types character-by-character with realistic delays reconciles cleanly — detection
+  then depends entirely on the timing model, which is a probabilistic arms race.
+- Browser timer clamping (Firefox 2 ms, 100 ms under `resistFingerprinting`) degrades timing
+  resolution in ways the academic literature, which uses lab-grade timings, does not account for.
+- Keystroke dynamics is a **weak** authenticator on its own — roughly 20× weaker than a password
+  (Van Hamme et al., EuroS&P 2023), and vulnerable to statistical forgery and master-key attacks.
+  CADENCE treats it as a risk signal that triggers step-up, never as an authentication factor.
+- Participant data so far is 49 people. That is small.
+
+## What this is not
+
+Not production software. Not a CAPTCHA replacement. Not an authentication factor. Not unspoofable.
+Not a claim that AI agents are reliably detectable in general.
+
+## Repository layout
+
+See [`MANIFEST.md`](MANIFEST.md) for the origin of every file and [`docs/CADENCE_PLAN.md`](docs/)
+for the full design and build plan (a Hinglish version is in the same folder).
+
+## License
+
+TBD.

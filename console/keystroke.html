@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keystroke Dynamics — Live Capture</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #0a0e17;
+            --surface: #111827;
+            --card: #1a2234;
+            --border: #1e293b;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #6366f1;
+            --green: #22c55e;
+            --yellow: #eab308;
+            --orange: #f97316;
+            --red: #ef4444;
+            --cyan: #06b6d4;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ============= HEADER ============= */
+        .header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--cyan), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-links a {
+            color: var(--muted);
+            text-decoration: none;
+            font-size: .85rem;
+            transition: color .2s;
+        }
+
+        .header-links a:hover {
+            color: var(--cyan);
+        }
+
+        /* ============= LAYOUT ============= */
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 28px 32px;
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            gap: 24px;
+        }
+
+        @media(max-width:860px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ============= CARDS ============= */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 14px 14px 0 0;
+            background: var(--accent);
+        }
+
+        .card-title {
+            font-size: .75rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--muted);
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        /* ============= USER SELECTOR ============= */
+        .user-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 14px;
+            align-items: center;
+        }
+
+        .user-row label {
+            font-size: .85rem;
+            color: var(--muted);
+            font-weight: 600;
+            white-space: nowrap;
+            min-width: 65px;
+        }
+
+        select {
+            flex: 1;
+            padding: 10px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: .9rem;
+            outline: none;
+            transition: border-color .2s;
+        }
+
+        select:focus {
+            border-color: var(--accent);
+        }
+
+        /* ============= PASSWORD DISPLAY ============= */
+        .password-display {
+            text-align: center;
+            padding: 16px;
+            margin-bottom: 16px;
+            background: var(--surface);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .password-label {
+            font-size: .72rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .password-chars {
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .pw-char {
+            width: 42px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            border-radius: 8px;
+            background: var(--card);
+            border: 2px solid var(--border);
+            transition: all .2s ease;
+        }
+
+        .pw-char.active {
+            border-color: var(--cyan);
+            background: rgba(6, 182, 212, .1);
+            box-shadow: 0 0 12px rgba(6, 182, 212, .2);
+            transform: scale(1.08);
+        }
+
+        .pw-char.done {
+            border-color: var(--green);
+            background: rgba(34, 197, 94, .1);
+            color: var(--green);
+        }
+
+        .pw-char.wrong {
+            border-color: var(--red);
+            background: rgba(239, 68, 68, .1);
+            color: var(--red);
+            animation: shake .3s ease;
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-4px);
+            }
+
+            75% {
+                transform: translateX(4px);
+            }
+        }
+
+        /* ============= TYPING INPUT ============= */
+        .typing-input {
+            width: 100%;
+            padding: 16px 18px;
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+            font-size: 1.3rem;
+            letter-spacing: 3px;
+            text-align: center;
+            outline: none;
+            transition: border-color .4s ease, box-shadow .4s ease;
+        }
+
+        .typing-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 24px rgba(99, 102, 241, .15);
+        }
+
+        .typing-input.glow-green {
+            border-color: var(--green);
+            box-shadow: 0 0 30px rgba(34, 197, 94, .25);
+        }
+
+        .typing-input.glow-red {
+            border-color: var(--red);
+            box-shadow: 0 0 30px rgba(239, 68, 68, .25);
+        }
+
+        /* ============= STATUS & COUNTER ============= */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            font-size: .82rem;
+            color: var(--muted);
+        }
+
+        .status-bar .count {
+            font-weight: 700;
+            color: var(--cyan);
+            font-size: 1rem;
+        }
+
+        .hint {
+            font-size: .76rem;
+            color: var(--muted);
+            margin-top: 12px;
+            line-height: 1.5;
+        }
+
+        .hint strong {
+            color: var(--cyan);
+        }
+
+        .rep-progress {
+            display: flex;
+            gap: 4px;
+            margin-top: 10px;
+        }
+
+        .rep-dot {
+            width: 24px;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border);
+            transition: background .3s ease;
+        }
+
+        .rep-dot.filled {
+            background: var(--green);
+        }
+
+        .rep-dot.active {
+            background: var(--cyan);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .5;
+            }
+        }
+
+        /* ============= RESULT CARDS ============= */
+        .result-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .result-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .result-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 14px 14px 0 0;
+        }
+
+        .result-card.rc-decision::before {
+            background: var(--cyan);
+        }
+
+        .result-card.rc-score::before {
+            background: var(--accent);
+        }
+
+        .result-card.rc-history::before {
+            background: var(--green);
+        }
+
+        .result-label {
+            font-size: .72rem;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .decision-display {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+        }
+
+        .decision-display.normal {
+            color: var(--green);
+        }
+
+        .decision-display.anomaly {
+            color: var(--red);
+        }
+
+        .decision-display.unknown {
+            color: var(--muted);
+        }
+
+        .risk-bar-outer {
+            height: 10px;
+            background: var(--border);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .risk-bar-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width .5s ease, background .5s ease;
+            width: 0%;
+        }
+
+        .risk-values {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 6px;
+            font-size: .78rem;
+        }
+
+        .risk-values span {
+            color: var(--muted);
+        }
+
+        .risk-values .risk-val {
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .score-detail {
+            margin-top: 10px;
+            font-size: .78rem;
+            color: var(--muted);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 12px;
+        }
+
+        .score-detail .val {
+            color: var(--cyan);
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        .history-list {
+            max-height: 280px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        .history-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(30, 41, 59, .4);
+            font-size: .78rem;
+            animation: fadeIn .3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .history-entry .time {
+            color: var(--muted);
+        }
+
+        .history-entry .score {
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        .decision-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: .68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .decision-badge.normal-bg {
+            background: rgba(34, 197, 94, .15);
+            color: var(--green);
+        }
+
+        .decision-badge.anomaly-bg {
+            background: rgba(239, 68, 68, .15);
+            color: var(--red);
+        }
+
+        .waiting-state {
+            text-align: center;
+            color: var(--muted);
+            padding: 20px;
+            font-size: .85rem;
+        }
+
+        .waiting-state .icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <div class="header">
+        <h1>⌨️ Keystroke Dynamics — Live Capture</h1>
+        <div class="header-links">
+            <a href="/dashboard">← Main Dashboard</a>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="container">
+
+        <!-- LEFT: Input Panel -->
+        <div>
+            <div class="card">
+                <div class="card-title">Capture Settings</div>
+                <div class="user-row">
+                    <label for="userId">User ID:</label>
+                    <select id="userId">
+                        <option value="">Loading…</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:16px">
+                <div class="card-title">Type the Password Below</div>
+
+                <!-- Password character display -->
+                <div class="password-display">
+                    <div class="password-label">Target Password</div>
+                    <div class="password-chars" id="pwChars"></div>
+                </div>
+
+                <!-- Typing input (hidden text, shows dots) -->
+                <input type="text" id="typingInput" class="typing-input" placeholder="Click here and type the password"
+                    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+
+                <div class="status-bar">
+                    <span>Repetition: <span class="count" id="repCount">0</span> / <span id="repTotal">5</span></span>
+                    <span>Attempts sent: <span class="count" id="sentCount">0</span></span>
+                </div>
+
+                <div class="rep-progress" id="repProgress"></div>
+
+                <div class="hint">
+                    💡 Type the password <strong>.tie5Roanl</strong> exactly. After each complete entry, timings are
+                    auto-submitted. The model compares your typing rhythm against the trained user's pattern.
+                    Press <strong>Enter</strong> or the input auto-submits when all characters are typed.
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Results Panel -->
+        <div class="result-section">
+
+            <div class="result-card rc-decision">
+                <div class="result-label">Decision</div>
+                <div class="decision-display unknown" id="decisionText">WAITING</div>
+            </div>
+
+            <div class="result-card rc-score">
+                <div class="result-label">Behavioral Risk</div>
+                <div class="risk-bar-outer">
+                    <div class="risk-bar-fill" id="riskFill"></div>
+                </div>
+                <div class="risk-values">
+                    <span>Risk: <span class="risk-val" id="riskVal">—</span></span>
+                    <span>Score: <span class="risk-val" id="rawScore">—</span></span>
+                </div>
+                <div class="score-detail" id="scoreDetail">
+                    <span>Threshold: <span class="val" id="threshVal">—</span></span>
+                    <span>User: <span class="val" id="resultUser">—</span></span>
+                </div>
+            </div>
+
+            <div class="result-card rc-history">
+                <div class="result-label">Analysis History</div>
+                <div class="history-list" id="historyList">
+                    <div class="waiting-state">
+                        <div class="icon">📋</div>
+                        Type the password to see results
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // PASSWORD & FEATURE CONFIG
+        // ============================================================
+        // The CMU dataset password — models were trained on this exact sequence
+        const PASSWORD = '.tie5Roanl';
+
+        // The exact key sequence (what key events to expect)
+        // Characters: .  t  i  e  5  R  o  a  n  l
+        // Note: 'R' requires Shift, so key events include Shift press
+        const KEY_SEQUENCE = [
+            { char: '.', key: '.', display: '.' },
+            { char: 't', key: 't', display: 't' },
+            { char: 'i', key: 'i', display: 'i' },
+            { char: 'e', key: 'e', display: 'e' },
+            { char: '5', key: '5', display: '5' },
+            { char: 'R', key: 'Shift', display: '⇧', isModifier: true },
+            { char: 'r', key: 'r', display: 'R' },   // the actual 'r' after Shift
+            { char: 'o', key: 'o', display: 'o' },
+            { char: 'a', key: 'a', display: 'a' },
+            { char: 'n', key: 'n', display: 'n' },
+            { char: 'l', key: 'l', display: 'l' },
+        ];
+
+        // Feature names matching the exact order the model expects
+        // 31 key-pair timing features + sessionIndex + rep + 6 aggregates = 39 total
+        const FEATURE_ORDER = [
+            'sessionIndex', 'rep',
+            'H.period', 'DD.period.t', 'UD.period.t',
+            'H.t', 'DD.t.i', 'UD.t.i',
+            'H.i', 'DD.i.e', 'UD.i.e',
+            'H.e', 'DD.e.five', 'UD.e.five',
+            'H.five', 'DD.five.Shift.r', 'UD.five.Shift.r',
+            'H.Shift.r', 'DD.Shift.r.o', 'UD.Shift.r.o',
+            'H.o', 'DD.o.a', 'UD.o.a',
+            'H.a', 'DD.a.n', 'UD.a.n',
+            'H.n', 'DD.n.l', 'UD.n.l',
+            'H.l', 'DD.l.Return', 'UD.l.Return',
+            'H.Return',
+            'mean_timing', 'std_timing', 'max_timing', 'min_timing',
+            'timing_range', 'consistency_ratio'
+        ];
+
+        // Key IDs for timing capture (maps to CMU naming convention)
+        const KEY_IDS = [
+            'period',    // .
+            't',         // t
+            'i',         // i
+            'e',         // e
+            'five',      // 5
+            'Shift.r',   // Shift+R (treated as single unit in CMU)
+            'o',         // o
+            'a',         // a
+            'n',         // n
+            'l',         // l
+            'Return'     // Enter
+        ];
+
+        // ============================================================
+        // STATE
+        // ============================================================
+        let sessionIndex = 1;
+        let repCount = 0;
+        let sentCount = 0;
+        const MAX_REPS = 5;
+
+        // Timing capture for current attempt
+        let keyTimings = {};   // key -> {downTime, upTime}
+        let keyOrder = [];     // ordered list of keys pressed
+        let expectingChar = 0; // index into password we expect next
+        let shiftHeld = false;
+        let shiftDownTime = 0;
+
+        // ============================================================
+        // INIT UI
+        // ============================================================
+        function initPasswordDisplay() {
+            const container = document.getElementById('pwChars');
+            // Display characters: . t i e 5 R o a n l
+            const displayChars = ['.', 't', 'i', 'e', '5', 'R', 'o', 'a', 'n', 'l'];
+            container.innerHTML = displayChars.map((ch, i) =>
+                `<div class="pw-char" id="pwc${i}">${ch}</div>`
+            ).join('');
+
+            // Init rep progress dots
+            const repProg = document.getElementById('repProgress');
+            repProg.innerHTML = Array.from({ length: MAX_REPS }, (_, i) =>
+                `<div class="rep-dot" id="rep${i}"></div>`
+            ).join('');
+        }
+        initPasswordDisplay();
+
+        // ============================================================
+        // LOAD USERS
+        // ============================================================
+        async function loadUsers() {
+            try {
+                const res = await fetch('/keystroke/users');
+                const users = await res.json();
+                const sel = document.getElementById('userId');
+                sel.innerHTML = users.map(uid =>
+                    `<option value="${uid}">${uid}</option>`
+                ).join('');
+            } catch (e) {
+                console.error('Failed to load users:', e);
+                document.getElementById('userId').innerHTML =
+                    '<option value="s002">s002 (fallback)</option>';
+            }
+        }
+        loadUsers();
+
+        // ============================================================
+        // PASSWORD MAP: character → display index
+        // ============================================================
+        // Maps expected character positions to the visual display
+        const CHAR_TO_DISPLAY = {
+            0: 0,  // .
+            1: 1,  // t
+            2: 2,  // i
+            3: 3,  // e
+            4: 4,  // 5
+            5: 5,  // R (covers both Shift down + r)
+            6: 5,  // r after Shift — same display position
+            7: 6,  // o
+            8: 7,  // a
+            9: 8,  // n
+            10: 9, // l
+        };
+
+        // ============================================================
+        // KEYSTROKE CAPTURE ENGINE
+        // ============================================================
+        const input = document.getElementById('typingInput');
+
+        input.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            const now = performance.now();
+
+            // Handle Shift for the 'R' character
+            if (e.key === 'Shift') {
+                if (!shiftHeld) {
+                    shiftHeld = true;
+                    shiftDownTime = now;
+                }
+                return;
+            }
+
+            // Handle Enter (submit)
+            if (e.key === 'Enter') {
+                keyTimings['Return'] = keyTimings['Return'] || {};
+                keyTimings['Return'].downTime = now;
+                return;
+            }
+
+            const expected = KEY_SEQUENCE[expectingChar];
+            if (!expected) return;
+
+            // Check if we're expecting the Shift modifier
+            if (expected.isModifier) {
+                // We already captured Shift in the Shift handler above
+                // The Shift.r combo is handled when 'r' is pressed below
+                // Advance past the Shift entry
+                if (shiftHeld) {
+                    expectingChar++;
+                }
+                // Now check if next char matches
+                const nextExpected = KEY_SEQUENCE[expectingChar];
+                if (nextExpected && e.key.toLowerCase() === nextExpected.key) {
+                    // This is the 'r' after Shift — record as 'Shift.r'
+                    keyTimings['Shift.r'] = { downTime: shiftDownTime };
+                    // Also mark the 'r' keydown time for the next DD/UD calculations
+                    // The Shift.r upTime will be set on keyup of 'r'
+                    highlightChar(CHAR_TO_DISPLAY[expectingChar], 'active');
+                    expectingChar++;
+                    updateInput();
+                } else {
+                    wrongChar();
+                }
+                return;
+            }
+
+            // Normal character
+            if (e.key === expected.key) {
+                const keyId = KEY_IDS[getKeyIdIndex()];
+                keyTimings[keyId] = keyTimings[keyId] || {};
+                keyTimings[keyId].downTime = now;
+                highlightChar(CHAR_TO_DISPLAY[expectingChar], 'active');
+                expectingChar++;
+                updateInput();
+
+                // Check if password is complete (all chars typed, waiting for Enter)
+                if (expectingChar >= KEY_SEQUENCE.length) {
+                    // Auto-submit after a tiny delay (to capture keyup)
+                    setTimeout(() => submitAttempt(), 300);
+                }
+            } else {
+                wrongChar();
+            }
+        });
+
+        input.addEventListener('keyup', (e) => {
+            const now = performance.now();
+
+            if (e.key === 'Shift') {
+                shiftHeld = false;
+                // The Shift.r upTime was already handled or will be
+                return;
+            }
+
+            if (e.key === 'Enter') {
+                if (keyTimings['Return']) {
+                    keyTimings['Return'].upTime = now;
+                }
+                // Submit if password was complete
+                if (expectingChar >= KEY_SEQUENCE.length) {
+                    submitAttempt();
+                }
+                return;
+            }
+
+            // Map key to keyId and record upTime
+            // Find which keyId this key release corresponds to
+            const keyLower = e.key.toLowerCase();
+            for (const [id, timing] of Object.entries(keyTimings)) {
+                if (id === keyLower || id === 'period' && e.key === '.' ||
+                    id === 'five' && e.key === '5' ||
+                    id === 'Shift.r' && keyLower === 'r') {
+                    if (timing.downTime && !timing.upTime) {
+                        timing.upTime = now;
+                        break;
+                    }
+                }
+            }
+
+            // Special: map specific keys to their IDs
+            const keyMap = { '.': 'period', '5': 'five' };
+            const mappedId = keyMap[e.key] || (keyLower === 'r' && keyTimings['Shift.r'] ? 'Shift.r' : keyLower);
+            if (keyTimings[mappedId] && keyTimings[mappedId].downTime && !keyTimings[mappedId].upTime) {
+                keyTimings[mappedId].upTime = now;
+            }
+        });
+
+        function getKeyIdIndex() {
+            // Map current expectingChar to KEY_IDS index
+            const map = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9 };
+            return map[expectingChar] ?? expectingChar;
+        }
+
+        function highlightChar(idx, cls) {
+            // Remove previous highlights
+            document.querySelectorAll('.pw-char').forEach(el => {
+                el.classList.remove('active');
+            });
+            const el = document.getElementById(`pwc${idx}`);
+            if (el) {
+                el.classList.remove('wrong');
+                el.classList.add(cls);
+                if (cls === 'active') {
+                    // Mark all before as done
+                    for (let i = 0; i < idx; i++) {
+                        document.getElementById(`pwc${i}`).classList.add('done');
+                    }
+                }
+            }
+        }
+
+        function wrongChar() {
+            const idx = CHAR_TO_DISPLAY[expectingChar] ?? expectingChar;
+            const el = document.getElementById(`pwc${idx}`);
+            if (el) {
+                el.classList.add('wrong');
+                setTimeout(() => el.classList.remove('wrong'), 500);
+            }
+        }
+
+        function updateInput() {
+            // Show typed characters as dots or actual chars
+            const typed = PASSWORD.substring(0, Math.min(expectingChar, PASSWORD.length));
+            input.value = typed;
+        }
+
+        // ============================================================
+        // COMPUTE 39 FEATURES & SUBMIT
+        // ============================================================
+        function submitAttempt() {
+            // Need timings for all 11 key events (period through Return)
+            // If Return wasn't explicitly pressed, synthesize it
+            if (!keyTimings['Return']) {
+                const now = performance.now();
+                keyTimings['Return'] = { downTime: now, upTime: now + 50 };
+            }
+            if (keyTimings['Return'] && !keyTimings['Return'].upTime) {
+                keyTimings['Return'].upTime = keyTimings['Return'].downTime + 80;
+            }
+
+            const features = computeFeatures();
+            if (!features) {
+                resetAttempt();
+                return;
+            }
+
+            repCount++;
+            sentCount++;
+            updateRepProgress();
+            sendToAPI(features);
+            resetAttempt();
+        }
+
+        function computeFeatures() {
+            // Build the 39-feature vector
+            const featureMap = {};
+
+            featureMap['sessionIndex'] = sessionIndex;
+            featureMap['rep'] = repCount + 1;
+
+            const allTimings = [];
+
+            // Compute H (hold), DD (down-down), UD (up-down) for each key pair
+            for (let i = 0; i < KEY_IDS.length; i++) {
+                const keyId = KEY_IDS[i];
+                const timing = keyTimings[keyId];
+
+                if (!timing || timing.downTime == null || timing.upTime == null) {
+                    // Missing timing — fill with 0
+                    featureMap[`H.${keyId}`] = 0;
+                    if (i < KEY_IDS.length - 1) {
+                        const nextId = KEY_IDS[i + 1];
+                        featureMap[`DD.${keyId}.${nextId}`] = 0;
+                        featureMap[`UD.${keyId}.${nextId}`] = 0;
+                    }
+                    continue;
+                }
+
+                // H = Hold time (keyup - keydown) in SECONDS
+                const hold = (timing.upTime - timing.downTime) / 1000;
+                featureMap[`H.${keyId}`] = hold;
+                allTimings.push(hold);
+
+                // DD and UD with next key
+                if (i < KEY_IDS.length - 1) {
+                    const nextId = KEY_IDS[i + 1];
+                    const nextTiming = keyTimings[nextId];
+
+                    if (nextTiming && nextTiming.downTime != null) {
+                        // DD = next keydown - this keydown (seconds)
+                        const dd = (nextTiming.downTime - timing.downTime) / 1000;
+                        featureMap[`DD.${keyId}.${nextId}`] = dd;
+                        allTimings.push(dd);
+
+                        // UD = next keydown - this keyup (seconds)
+                        const ud = (nextTiming.downTime - timing.upTime) / 1000;
+                        featureMap[`UD.${keyId}.${nextId}`] = ud;
+                        allTimings.push(ud);
+                    } else {
+                        featureMap[`DD.${keyId}.${nextId}`] = 0;
+                        featureMap[`UD.${keyId}.${nextId}`] = 0;
+                    }
+                }
+            }
+
+            // Aggregate features
+            if (allTimings.length > 0) {
+                const mean = allTimings.reduce((a, b) => a + b, 0) / allTimings.length;
+                const std = Math.sqrt(allTimings.reduce((s, v) => s + (v - mean) ** 2, 0) / allTimings.length);
+                const max = Math.max(...allTimings);
+                const min = Math.min(...allTimings);
+
+                featureMap['mean_timing'] = mean;
+                featureMap['std_timing'] = std;
+                featureMap['max_timing'] = max;
+                featureMap['min_timing'] = min;
+                featureMap['timing_range'] = max - min;
+                featureMap['consistency_ratio'] = mean !== 0 ? std / mean : 0;
+            } else {
+                featureMap['mean_timing'] = 0;
+                featureMap['std_timing'] = 0;
+                featureMap['max_timing'] = 0;
+                featureMap['min_timing'] = 0;
+                featureMap['timing_range'] = 0;
+                featureMap['consistency_ratio'] = 0;
+            }
+
+            // Build ordered feature vector
+            const featureVector = FEATURE_ORDER.map(name => featureMap[name] ?? 0);
+            return featureVector;
+        }
+
+        function resetAttempt() {
+            expectingChar = 0;
+            keyTimings = {};
+            shiftHeld = false;
+            shiftDownTime = 0;
+            input.value = '';
+
+            // Reset password display
+            document.querySelectorAll('.pw-char').forEach(el => {
+                el.classList.remove('active', 'done', 'wrong');
+            });
+
+            // If max reps reached, increment session
+            if (repCount >= MAX_REPS) {
+                sessionIndex++;
+                repCount = 0;
+                updateRepProgress();
+            }
+        }
+
+        function updateRepProgress() {
+            document.getElementById('repCount').textContent = repCount;
+            document.getElementById('sentCount').textContent = sentCount;
+
+            for (let i = 0; i < MAX_REPS; i++) {
+                const dot = document.getElementById(`rep${i}`);
+                if (!dot) continue;
+                dot.className = 'rep-dot';
+                if (i < repCount) dot.classList.add('filled');
+                else if (i === repCount) dot.classList.add('active');
+            }
+        }
+
+        // ============================================================
+        // API CALL
+        // ============================================================
+        async function sendToAPI(features) {
+            const userId = document.getElementById('userId').value;
+            if (!userId) return;
+
+            try {
+                const res = await fetch('/keystroke_live', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        keystroke_features: features,
+                    }),
+                });
+
+                const result = await res.json();
+                displayResult(result);
+                addHistory(result);
+            } catch (e) {
+                console.error('API error:', e);
+            }
+        }
+
+        // ============================================================
+        // DISPLAY RESULTS
+        // ============================================================
+        function displayResult(result) {
+            const decEl = document.getElementById('decisionText');
+            const decision = result.decision || 'UNKNOWN';
+
+            decEl.textContent = decision;
+            decEl.className = 'decision-display ' +
+                (decision === 'NORMAL' ? 'normal' : decision === 'ANOMALY' ? 'anomaly' : 'unknown');
+
+            const risk = result.behavioral_risk ?? 0;
+            const riskPct = Math.min(100, Math.max(0, risk * 100));
+
+            const fillEl = document.getElementById('riskFill');
+            fillEl.style.width = riskPct + '%';
+            fillEl.style.background = risk < 0.3 ? 'var(--green)' : risk < 0.6 ? 'var(--yellow)' : risk < 0.8 ? 'var(--orange)' : 'var(--red)';
+
+            document.getElementById('riskVal').textContent = risk.toFixed(4);
+            document.getElementById('rawScore').textContent = (result.raw_score ?? 0).toFixed(6);
+            document.getElementById('threshVal').textContent = (result.threshold ?? 0).toFixed(6);
+            document.getElementById('resultUser').textContent = result.user_id || '—';
+
+            // Glow effect on input
+            const inp = document.getElementById('typingInput');
+            inp.className = 'typing-input';
+            inp.classList.add(decision === 'NORMAL' ? 'glow-green' : 'glow-red');
+            setTimeout(() => { inp.className = 'typing-input'; }, 2500);
+        }
+
+        function addHistory(result) {
+            const list = document.getElementById('historyList');
+            const waiting = list.querySelector('.waiting-state');
+            if (waiting) waiting.remove();
+
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const decision = result.decision || '?';
+            const risk = (result.behavioral_risk ?? 0).toFixed(4);
+
+            const entry = document.createElement('div');
+            entry.className = 'history-entry';
+            entry.innerHTML = `
+                <span class="time">${time}</span>
+                <span class="score" style="color:${decision === 'NORMAL' ? 'var(--green)' : 'var(--red)'}">${risk}</span>
+                <span class="decision-badge ${decision === 'NORMAL' ? 'normal-bg' : 'anomaly-bg'}">${decision}</span>
+            `;
+            list.insertBefore(entry, list.firstChild);
+            while (list.children.length > 20) list.removeChild(list.lastChild);
+        }
+
+        // Auto-focus input
+        input.focus();
+    </script>
+</body>
+
+</html>

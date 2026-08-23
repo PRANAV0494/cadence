@@ -1,0 +1,41 @@
+# --- PRIVACY: never commit participant data ---
+data/private/
+*.participant.csv
+keystroke_export_*.csv
+
+# --- large / regenerable model artifacts (use Releases or DVC) ---
+*.pkl
+*.joblib
+!models/network/cicids2017_scaler.pkl
+!models/network/cicids2017_xgboost_model.pkl
+checkpoints/
+models/identity/**/*.pkl
+
+# --- third-party datasets: ship download scripts, not the data ---
+data/DSL-StrongPasswordData.csv
+data/keyrecs/
+data/aalto/
+
+# --- build junk ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.aws-sam/
+lambda_package/
+packages/
+deploy-full.zip
+*.egg-info/
+.venv/
+venv/
+
+# --- env / secrets ---
+.env
+.env.*
+*.pem
+samconfig.local.toml
+
+# --- editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

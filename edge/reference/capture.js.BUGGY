@@ -1,0 +1,286 @@
+/**
+ * Keystroke Dynamics Capture Module
+ *
+ * Captures raw keystroke events (keydown/keyup) with high-resolution
+ * timestamps via performance.now(). Fetches active phrases dynamically
+ * from the backend API.
+ */
+
+(() => {
+    'use strict';
+
+    // ── Configuration ─────────────────────────────────────────
+    const API_BASE = "https://q2t19vyp9a.execute-api.ap-southeast-2.amazonaws.com/prod";
+
+    // Fallback phrases (used only if API is unreachable)
+    const FALLBACK_PHRASES = [
+        { phrase_id: 'phrase_1', text: 'password123', version: 1, max_attempts: 1, order: 1 },
+        { phrase_id: 'phrase_2', text: 'admin123', version: 1, max_attempts: 1, order: 2 },
+        { phrase_id: 'phrase_3', text: 'welcome123', version: 1, max_attempts: 1, order: 3 },
+        { phrase_id: 'phrase_4', text: 'login2026', version: 1, max_attempts: 1, order: 4 },
+        { phrase_id: 'phrase_5', text: 'secure@123', version: 1, max_attempts: 1, order: 5 },
+    ];
+
+    // ── State ─────────────────────────────────────────────────
+    let sessionId = '';
+    let username = '';
+    let phrases = [];        // populated from API
+    let currentPhraseIndex = 0;
+    let attemptNumber = 1;
+    let maxAttempts = 1;
+    let events = [];
+    let keyDownMap = {};
+
+    // ── UUID v4 generator ─────────────────────────────────────
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+    }
+
+    // ── Key classification ────────────────────────────────────
+    function classifyKey(key) {
+        if (key === 'Shift' || key === 'CapsLock') return 'shift';
+        if (/^[a-zA-Z]$/.test(key)) return 'letter';
+        if (/^[0-9]$/.test(key)) return 'number';
+        return 'special';
+    }
+
+    // ── DOM Elements ──────────────────────────────────────────
+    const usernameInput = document.getElementById('username-input');
+    const consentCheckbox = document.getElementById('consent-checkbox');
+    const startBtn = document.getElementById('start-btn');
+    const setupSection = document.getElementById('setup-section');
+    const typingSection = document.getElementById('typing-section');
+    const completeSection = document.getElementById('complete-section');
+    const typingInput = document.getElementById('typing-input');
+    const targetPhrase = document.getElementById('target-phrase');
+    const progressLabel = document.getElementById('progress-label');
+    const attemptLabel = document.getElementById('attempt-label');
+    const progressFill = document.getElementById('progress-fill');
+    const submitBtn = document.getElementById('submit-phrase-btn');
+    const typingStatus = document.getElementById('typing-status');
+    const sessionInfo = document.getElementById('session-info');
+    const restartBtn = document.getElementById('restart-btn');
+
+    // ── Fetch phrases from API ────────────────────────────────
+    async function fetchPhrases() {
+        try {
+            const res = await fetch(`${API_BASE}/api/phrases`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (data.phrases && data.phrases.length > 0) {
+                phrases = data.phrases.sort((a, b) => a.order - b.order);
+                console.log(`Loaded ${phrases.length} phrases from API`);
+                return;
+            }
+        } catch (e) {
+            console.warn('Could not fetch phrases from API, using fallback:', e.message);
+        }
+        phrases = FALLBACK_PHRASES;
+    }
+
+    // ── Enable/disable start button ───────────────────────────
+    function updateStartButton() {
+        startBtn.disabled = !(usernameInput.value.trim() && consentCheckbox.checked);
+    }
+    usernameInput.addEventListener('input', updateStartButton);
+    consentCheckbox.addEventListener('change', updateStartButton);
+
+    // ── Start session ─────────────────────────────────────────
+    startBtn.addEventListener('click', async () => {
+        username = usernameInput.value.trim();
+        sessionId = generateUUID();
+        currentPhraseIndex = 0;
+        attemptNumber = 1;
+
+        // Fetch latest phrases before starting
+        startBtn.disabled = true;
+        startBtn.textContent = 'Loading phrases…';
+        await fetchPhrases();
+        startBtn.textContent = 'Begin Typing Session';
+
+        setupSection.classList.add('hidden');
+        typingSection.classList.remove('hidden');
+        loadPhrase();
+        typingInput.focus();
+    });
+
+    // ── Load current phrase ───────────────────────────────────
+    function loadPhrase() {
+        const phrase = phrases[currentPhraseIndex];
+        targetPhrase.textContent = phrase.text;
+        maxAttempts = phrase.max_attempts || 1;
+        typingInput.value = '';
+        events = [];
+        keyDownMap = {};
+        submitBtn.disabled = true;
+        typingStatus.innerHTML = '';
+
+        progressLabel.textContent = `Phrase ${currentPhraseIndex + 1} of ${phrases.length}`;
+        attemptLabel.textContent = `Attempt ${attemptNumber}` + (maxAttempts > 1 ? ` of ${maxAttempts}` : '');
+        progressFill.style.width = `${((currentPhraseIndex) / phrases.length) * 100}%`;
+    }
+
+    // ── Paste detection ───────────────────────────────────────
+    typingInput.addEventListener('paste', (e) => {
+        e.preventDefault();
+        events.push({
+            key: 'PASTE',
+            event_type: 'keydown',
+            timestamp: performance.now(),
+            key_index: typingInput.selectionStart || 0,
+            key_class: 'special',
+            is_backspace: false,
+            is_paste: true,
+        });
+        showStatus('Pasting is not allowed. Please type the phrase manually.', 'warning');
+    });
+
+    // ── Keystroke capture ─────────────────────────────────────
+    typingInput.addEventListener('keydown', (e) => {
+        const ts = performance.now();
+        const isBackspace = e.key === 'Backspace';
+
+        if (['Control', 'Alt', 'Meta', 'Tab', 'Escape'].includes(e.key)) return;
+
+        const evt = {
+            key: isBackspace ? 'Backspace' : (e.key.length === 1 ? e.key : e.key),
+            event_type: 'keydown',
+            timestamp: ts,
+            key_index: typingInput.selectionStart || 0,
+            key_class: classifyKey(e.key),
+            is_backspace: isBackspace,
+            is_paste: false,
+        };
+
+        events.push(evt);
+        keyDownMap[e.key] = ts;
+    });
+
+    typingInput.addEventListener('keyup', (e) => {
+        const ts = performance.now();
+        const isBackspace = e.key === 'Backspace';
+
+        if (['Control', 'Alt', 'Meta', 'Tab', 'Escape'].includes(e.key)) return;
+
+        const evt = {
+            key: isBackspace ? 'Backspace' : (e.key.length === 1 ? e.key : e.key),
+            event_type: 'keyup',
+            timestamp: ts,
+            key_index: typingInput.selectionStart || 0,
+            key_class: classifyKey(e.key),
+            is_backspace: isBackspace,
+            is_paste: false,
+        };
+
+        events.push(evt);
+        delete keyDownMap[e.key];
+    });
+
+    // ── Input validation (live) ───────────────────────────────
+    typingInput.addEventListener('input', () => {
+        const target = phrases[currentPhraseIndex].text;
+        const current = typingInput.value;
+
+        if (current === target) {
+            submitBtn.disabled = false;
+            showStatus('✓ Exact match! Click submit to continue.', 'success');
+        } else if (target.startsWith(current)) {
+            submitBtn.disabled = true;
+            showStatus(`${current.length}/${target.length} characters`, 'info');
+        } else {
+            submitBtn.disabled = true;
+            showStatus('✗ Mismatch detected — please correct your input.', 'error');
+        }
+    });
+
+    // ── Submit phrase ─────────────────────────────────────────
+    submitBtn.addEventListener('click', async () => {
+        const phrase = phrases[currentPhraseIndex];
+        if (typingInput.value !== phrase.text) {
+            showStatus('Input does not match the target phrase.', 'error');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending…';
+
+        const payload = {
+            username: username,
+            session_id: sessionId,
+            attempt_number: attemptNumber,
+            phrase_id: phrase.phrase_id,
+            phrase_version: phrase.version || 1,
+            events: events,
+            consent_given: true,
+            timestamp: new Date().toISOString(),
+        };
+
+        try {
+            const response = await fetch(`${API_BASE}/api/submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            showStatus(`✓ Submitted — WPM: ${result.features_summary?.typing_speed_wpm || 'N/A'}`, 'success');
+
+            // Check if more attempts needed for this phrase
+            if (attemptNumber < maxAttempts) {
+                attemptNumber++;
+                setTimeout(() => {
+                    loadPhrase();
+                    typingInput.focus();
+                }, 600);
+            } else {
+                // Move to next phrase
+                currentPhraseIndex++;
+                attemptNumber = 1;
+
+                if (currentPhraseIndex >= phrases.length) {
+                    setTimeout(() => {
+                        typingSection.classList.add('hidden');
+                        completeSection.classList.remove('hidden');
+                        sessionInfo.textContent = `Session ID: ${sessionId}`;
+                        progressFill.style.width = '100%';
+                    }, 800);
+                } else {
+                    setTimeout(() => {
+                        loadPhrase();
+                        typingInput.focus();
+                    }, 600);
+                }
+            }
+
+        } catch (error) {
+            console.error('Submit error:', error);
+            showStatus(`Error: ${error.message}. Please try again.`, 'error');
+            submitBtn.disabled = false;
+        }
+
+        submitBtn.textContent = 'Submit & Next Phrase →';
+    });
+
+    // ── Restart ───────────────────────────────────────────────
+    restartBtn.addEventListener('click', () => {
+        completeSection.classList.add('hidden');
+        setupSection.classList.remove('hidden');
+        usernameInput.value = '';
+        consentCheckbox.checked = false;
+        updateStartButton();
+    });
+
+    // ── Status helper ─────────────────────────────────────────
+    function showStatus(message, type = 'info') {
+        typingStatus.innerHTML = `<div class="status status--${type}">${message}</div>`;
+    }
+
+})();

@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Keystroke Dynamics Behavioral Biometric API v2.0
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: python3.13
+
+Parameters:
+  JwtSecretKey:
+    Type: String
+    NoEcho: true
+  AdminUsername:
+    Type: String
+  AdminPasswordHash:
+    Type: String
+    NoEcho: true
+  AllowedOrigins:
+    Type: String
+    Default: "http://localhost:5000,http://localhost:3000"
+
+Resources:
+  # ── DynamoDB: Keystroke Sessions ───────────────────────────
+  KeystrokeTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: KeystrokeSessions
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: username
+          AttributeType: S
+        - AttributeName: sort_key
+          AttributeType: S
+        - AttributeName: session_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: username
+          KeyType: HASH
+        - AttributeName: sort_key
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: SessionIndex
+          KeySchema:
+            - AttributeName: session_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ── DynamoDB: Phrases ──────────────────────────────────────
+  PhrasesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: KeystrokePhrases
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: phrase_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: phrase_id
+          KeyType: HASH
+
+  # ── DynamoDB: Audit Log ────────────────────────────────────
+  AuditLogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: KeystrokeAuditLog
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: log_id
+          AttributeType: S
+        - AttributeName: phrase_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: log_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: PhraseAuditIndex
+          KeySchema:
+            - AttributeName: phrase_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ── Lambda Function ────────────────────────────────────────
+  KeystrokeApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: keystroke-dynamics-api
+      Handler: app.main.handler
+      CodeUri: .
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref KeystrokeTable
+          PHRASES_TABLE: !Ref PhrasesTable
+          AUDIT_TABLE: !Ref AuditLogTable
+          JWT_SECRET_KEY: !Ref JwtSecretKey
+          ADMIN_USERNAME: !Ref AdminUsername
+          ADMIN_PASSWORD_HASH: !Ref AdminPasswordHash
+          ALLOWED_ORIGINS: !Ref AllowedOrigins
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref KeystrokeTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhrasesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AuditLogTable
+      Events:
+        ApiCatchAll:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            ApiId: !Ref HttpApi
+
+  # ── HTTP API Gateway ───────────────────────────────────────
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        MaxAge: 600
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  SessionsTableName:
+    Description: DynamoDB sessions table
+    Value: !Ref KeystrokeTable
+  PhrasesTableName:
+    Description: DynamoDB phrases table
+    Value: !Ref PhrasesTable
+  AuditLogTableName:
+    Description: DynamoDB audit log table
+    Value: !Ref AuditLogTable

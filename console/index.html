@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Threat Analyzer — Live Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        /* ============= RESET & PALETTE ============= */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --bg: #0a0e17;
+            --surface: #111827;
+            --card: #1a2234;
+            --border: #1e293b;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #6366f1;
+            --green: #22c55e;
+            --yellow: #eab308;
+            --orange: #f97316;
+            --red: #ef4444;
+            --cyan: #06b6d4;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow-x: hidden
+        }
+
+        /* ============= HEADER ============= */
+        .header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--cyan), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: .85rem;
+            color: var(--muted)
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: pulse 2s infinite
+        }
+
+        .dot.live {
+            background: var(--green)
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .4
+            }
+        }
+
+        /* ============= GRID ============= */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            padding: 20px 32px
+        }
+
+        .grid-3 {
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+            padding: 0 32px 20px
+        }
+
+        .grid-logs {
+            grid-template-columns: 1fr;
+            padding: 0 32px 32px
+        }
+
+        /* ============= CARDS ============= */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 12px 12px 0 0
+        }
+
+        .card.c-green::before {
+            background: var(--green)
+        }
+
+        .card.c-yellow::before {
+            background: var(--yellow)
+        }
+
+        .card.c-red::before {
+            background: var(--red)
+        }
+
+        .card.c-accent::before {
+            background: var(--accent)
+        }
+
+        .card.c-cyan::before {
+            background: var(--cyan)
+        }
+
+        .card-label {
+            font-size: .75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            margin-bottom: 8px
+        }
+
+        .card-value {
+            font-size: 2rem;
+            font-weight: 700
+        }
+
+        .card-sub {
+            font-size: .8rem;
+            color: var(--muted);
+            margin-top: 4px
+        }
+
+        /* ============= CHART AREA ============= */
+        .chart-wrap {
+            height: 280px;
+            position: relative
+        }
+
+        .chart-wrap canvas {
+            width: 100% !important
+        }
+
+        /* ============= LOG TABLE ============= */
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: .82rem
+        }
+
+        .log-table th {
+            text-align: left;
+            color: var(--muted);
+            font-weight: 600;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            text-transform: uppercase;
+            font-size: .72rem;
+            letter-spacing: .5px
+        }
+
+        .log-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle
+        }
+
+        .log-table tr:hover {
+            background: rgba(99, 102, 241, .06)
+        }
+
+        .log-wrap {
+            max-height: 340px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent
+        }
+
+        /* ============= BADGES ============= */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: .72rem;
+            font-weight: 600;
+            text-transform: uppercase
+        }
+
+        .badge.allow {
+            background: rgba(34, 197, 94, .15);
+            color: var(--green)
+        }
+
+        .badge.mfa {
+            background: rgba(234, 179, 8, .15);
+            color: var(--yellow)
+        }
+
+        .badge.block {
+            background: rgba(239, 68, 68, .15);
+            color: var(--red)
+        }
+
+        .badge.threat {
+            background: rgba(249, 115, 22, .15);
+            color: var(--orange)
+        }
+
+        .badge.normal {
+            background: rgba(6, 182, 212, .12);
+            color: var(--cyan)
+        }
+
+        .badge.anomaly {
+            background: rgba(239, 68, 68, .12);
+            color: var(--red)
+        }
+
+        /* ============= RISK METER ============= */
+        .risk-bar {
+            height: 8px;
+            border-radius: 4px;
+            background: var(--border);
+            overflow: hidden;
+            margin-top: 6px
+        }
+
+        .risk-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width .5s ease, background .5s ease
+        }
+
+        /* ============= EXTRAS ============= */
+        .section-title {
+            padding: 4px 32px 8px;
+            font-size: .9rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px
+        }
+
+        .empty-state {
+            text-align: center;
+            color: var(--muted);
+            padding: 60px 20px;
+            font-size: .9rem
+        }
+
+        @media(max-width:900px) {
+            .grid {
+                grid-template-columns: 1fr 1fr
+            }
+
+            .grid-3 {
+                grid-template-columns: 1fr
+            }
+        }
+
+        @media(max-width:600px) {
+            .grid {
+                grid-template-columns: 1fr
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ============= HEADER ============= -->
+    <div class="header">
+        <h1>🛡 Self-Aware Hybrid Threat Analyzer</h1>
+        <div class="status-pill">
+            <div class="dot" id="wsDot"></div>
+            <span id="wsStatus">Connecting…</span>
+        </div>
+    </div>
+
+    <!-- ============= STAT CARDS ============= -->
+    <div class="grid" style="margin-top:4px">
+        <div class="card c-accent">
+            <div class="card-label">Total Events</div>
+            <div class="card-value" id="totalEvents">0</div>
+            <div class="card-sub" id="eventsPerSec">0 / sec</div>
+        </div>
+        <div class="card c-green">
+            <div class="card-label">Allowed</div>
+            <div class="card-value" id="totalAllow">0</div>
+            <div class="card-sub" id="allowRate">—</div>
+        </div>
+        <div class="card c-yellow">
+            <div class="card-label">MFA Challenges</div>
+            <div class="card-value" id="totalMFA">0</div>
+            <div class="card-sub" id="mfaRate">—</div>
+        </div>
+        <div class="card c-red">
+            <div class="card-label">Blocked</div>
+            <div class="card-value" id="totalBlock">0</div>
+            <div class="card-sub" id="blockRate">—</div>
+        </div>
+    </div>
+
+    <!-- ============= CHARTS ROW ============= -->
+    <div class="section-title">Real-Time Risk Timeline</div>
+    <div class="grid-3">
+        <div class="card c-cyan">
+            <div class="chart-wrap"><canvas id="riskChart"></canvas></div>
+        </div>
+        <div class="card c-accent">
+            <div class="card-label" style="margin-bottom:12px">Risk Distribution</div>
+            <div class="chart-wrap" style="height:230px"><canvas id="pieChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- ============= LIVE LOG ============= -->
+    <div class="section-title" style="margin-top:8px">Live Event Feed</div>
+    <div class="grid-logs">
+        <div class="card">
+            <div class="log-wrap" id="logWrap">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>User</th>
+                            <th>Source</th>
+                            <th>Behav. Risk</th>
+                            <th>Net Risk</th>
+                            <th>Fused</th>
+                            <th>Network</th>
+                            <th>Action</th>
+                            <th>Attack</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logBody">
+                        <tr>
+                            <td colspan="9" class="empty-state">Waiting for events… Send requests to /analyze or
+                                /analyze_raw</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // STATE
+        // ============================================================
+        const state = {
+            events: 0, allow: 0, mfa: 0, block: 0,
+            startTime: Date.now(),
+            riskHistory: [],          // [{t, behavioral, network, fused}]
+            maxHistory: 60,
+        };
+
+        // ============================================================
+        // CHART SETUP
+        // ============================================================
+        const riskCtx = document.getElementById('riskChart').getContext('2d');
+        const riskChart = new Chart(riskCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Fused Risk', data: [], borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.1)', fill: true, tension: .4, pointRadius: 2, borderWidth: 2 },
+                    { label: 'Behavioral', data: [], borderColor: '#06b6d4', borderDash: [4, 4], tension: .4, pointRadius: 0, borderWidth: 1.5 },
+                    { label: 'Network', data: [], borderColor: '#f97316', borderDash: [4, 4], tension: .4, pointRadius: 0, borderWidth: 1.5 },
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { display: true, grid: { color: '#1e293b' }, ticks: { color: '#64748b', maxTicksLimit: 10, font: { size: 10 } } },
+                    y: { min: 0, max: 1, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } } },
+                },
+                plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } }
+            }
+        });
+
+        const pieCtx = document.getElementById('pieChart').getContext('2d');
+        const pieChart = new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Allow', 'MFA', 'Block'],
+                datasets: [{ data: [0, 0, 0], backgroundColor: ['#22c55e', '#eab308', '#ef4444'], borderWidth: 0 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '65%',
+                plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } }
+            }
+        });
+
+        // ============================================================
+        // WEBSOCKET
+        // ============================================================
+        let ws;
+        function connect() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+            ws.onopen = () => {
+                document.getElementById('wsDot').classList.add('live');
+                document.getElementById('wsStatus').textContent = 'Live';
+            };
+
+            ws.onclose = () => {
+                document.getElementById('wsDot').classList.remove('live');
+                document.getElementById('wsStatus').textContent = 'Reconnecting…';
+                setTimeout(connect, 2000);
+            };
+
+            ws.onmessage = (e) => {
+                try { handleEvent(JSON.parse(e.data)); } catch (err) { console.error(err); }
+            };
+        }
+        connect();
+
+        // ============================================================
+        // EVENT HANDLER
+        // ============================================================
+        function handleEvent(d) {
+            state.events++;
+            const action = d.action?.action || '?';
+            if (action === 'ALLOW_ACCESS') state.allow++;
+            else if (action === 'REQUIRE_MFA') state.mfa++;
+            else if (action === 'ACCOUNT_LOCKED') state.block++;
+
+            updateCards();
+            updateCharts(d);
+            addLogRow(d);
+        }
+
+        function updateCards() {
+            document.getElementById('totalEvents').textContent = state.events;
+            document.getElementById('totalAllow').textContent = state.allow;
+            document.getElementById('totalMFA').textContent = state.mfa;
+            document.getElementById('totalBlock').textContent = state.block;
+
+            const elapsed = (Date.now() - state.startTime) / 1000;
+            document.getElementById('eventsPerSec').textContent = (state.events / Math.max(elapsed, 1)).toFixed(1) + ' / sec';
+
+            const total = state.events || 1;
+            document.getElementById('allowRate').textContent = ((state.allow / total) * 100).toFixed(0) + '% of total';
+            document.getElementById('mfaRate').textContent = ((state.mfa / total) * 100).toFixed(0) + '% of total';
+            document.getElementById('blockRate').textContent = ((state.block / total) * 100).toFixed(0) + '% of total';
+        }
+
+        function updateCharts(d) {
+            const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const bRisk = d.behavioral?.behavioral_risk ?? 0;
+            const nRisk = d.network?.network_risk ?? 0;
+            const fRisk = d.fusion?.final_risk ?? 0;
+
+            // Risk timeline
+            riskChart.data.labels.push(now);
+            riskChart.data.datasets[0].data.push(fRisk);
+            riskChart.data.datasets[1].data.push(bRisk);
+            riskChart.data.datasets[2].data.push(nRisk);
+
+            if (riskChart.data.labels.length > state.maxHistory) {
+                riskChart.data.labels.shift();
+                riskChart.data.datasets.forEach(ds => ds.data.shift());
+            }
+            riskChart.update('none');
+
+            // Pie
+            pieChart.data.datasets[0].data = [state.allow, state.mfa, state.block];
+            pieChart.update('none');
+        }
+
+        function addLogRow(d) {
+            const tbody = document.getElementById('logBody');
+            // Remove empty state row
+            const empty = tbody.querySelector('.empty-state');
+            if (empty) empty.parentElement.remove();
+
+            const tr = document.createElement('tr');
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const user = d.user_id || '—';
+            const source = d.source || '—';
+            const bRisk = (d.behavioral?.behavioral_risk ?? 0).toFixed(3);
+            const nRisk = (d.network?.network_risk ?? 0).toFixed(3);
+            const fRisk = (d.fusion?.final_risk ?? 0).toFixed(3);
+            const netDec = d.network?.decision || '—';
+            const action = d.action?.action || '—';
+            const attack = d.network?.attack_type || d.threat_context?.attack_type || '—';
+
+            const actionClass = action === 'ALLOW_ACCESS' ? 'allow' : action === 'REQUIRE_MFA' ? 'mfa' : 'block';
+            const netClass = netDec === 'NORMAL' ? 'normal' : 'anomaly';
+
+            tr.innerHTML = `
+        <td style="color:var(--muted)">${time}</td>
+        <td><strong>${user}</strong></td>
+        <td>${source}</td>
+        <td>${riskCell(bRisk)}</td>
+        <td>${riskCell(nRisk)}</td>
+        <td>${riskCell(fRisk)}</td>
+        <td><span class="badge ${netClass}">${netDec}</span></td>
+        <td><span class="badge ${actionClass}">${action.replace('_', ' ')}</span></td>
+        <td style="color:${attack !== '—' ? 'var(--orange)' : 'var(--muted)'}">${attack}</td>
+    `;
+
+            tbody.insertBefore(tr, tbody.firstChild);
+
+            // Keep max 100 rows
+            while (tbody.children.length > 100) tbody.removeChild(tbody.lastChild);
+
+            // Auto-scroll
+            document.getElementById('logWrap').scrollTop = 0;
+        }
+
+        function riskCell(val) {
+            const v = parseFloat(val);
+            const color = v < 0.3 ? 'var(--green)' : v < 0.6 ? 'var(--yellow)' : v < 0.8 ? 'var(--orange)' : 'var(--red)';
+            return `<span style="color:${color};font-weight:600">${val}</span>`;
+        }
+    </script>
+</body>
+
+</html>

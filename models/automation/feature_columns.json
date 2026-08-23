@@ -1,0 +1,32 @@
+{
+  "feature_columns": [
+    "core_features.total_typing_duration_ms",
+    "core_features.typing_speed_wpm",
+    "digraph_features.digraph_consistency_score",
+    "digraph_features.mean_digraph_latency",
+    "digraph_features.std_digraph_latency",
+    "distribution_features.iqr",
+    "distribution_features.kurtosis",
+    "distribution_features.max_dwell_time",
+    "distribution_features.median_dwell_time",
+    "distribution_features.min_dwell_time",
+    "distribution_features.skewness",
+    "error_features.backspace_count",
+    "error_features.backspace_ratio",
+    "error_features.correction_burst_length",
+    "error_features.correction_latency_ms",
+    "pause_features.average_pause_length_ms",
+    "pause_features.long_pause_count",
+    "pause_features.pause_count",
+    "sequence_features.acceleration_trend",
+    "sequence_features.autocorrelation_score",
+    "sequence_features.burst_typing_score",
+    "sequence_features.timing_entropy",
+    "variability_features.coefficient_of_variation",
+    "variability_features.mean_dwell_time",
+    "variability_features.mean_flight_time",
+    "variability_features.session_speed_drift_ms",
+    "variability_features.std_dwell_time",
+    "variability_features.std_flight_time"
+  ]
+}
