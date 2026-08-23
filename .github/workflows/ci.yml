@@ -34,8 +34,12 @@ jobs:
         # The API tests exercise real endpoints through TestClient, so the
         # runtime dependencies are required, not just the test runner.
         run: |
-          python -m pip install --quiet pytest httpx
+          # Install the pinned runtime first, then a test client compatible
+          # with it. deploy/requirements.txt pins fastapi 0.109.2, whose
+          # TestClient passes app= to httpx.Client — a keyword httpx removed
+          # in 0.28. Testing against the versions we deploy is the point.
           python -m pip install --quiet -r deploy/requirements.txt
+          python -m pip install --quiet pytest "httpx<0.28"
 
       - name: Verify Node is present
         run: |
