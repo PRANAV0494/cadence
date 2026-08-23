@@ -12,14 +12,14 @@ Cell 20 computes:
 ```python
 iso_eers = results_df['EER'].values
 svm_eers = iso_eers * 1.1          # placeholder for comparison
-t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # → 4.689e-21
+t_stat, p_val = ttest_rel(iso_eers, svm_eers)   # <!--!retracted-->→ 4.689e-21<!--/-->
 ```
 
-This t-tests a vector against **itself scaled by 1.1**. The resulting `p = 4.7e-21` is an artifact of
+This t-tests a vector against **itself scaled by 1.1**. The resulting <!--!retracted-->`p = 4.7e-21`<!--/--> is an artifact of
 arithmetic, not evidence of anything.
 
 **Use instead:** `Final_Keystroke_Dynamics_Full.ipynb` cell 13 — a genuine paired t-test of Isolation
-Forest vs One-Class SVM across 51 subjects: **t = 3.1127, p = 0.0031**.
+Forest vs One-Class SVM across 51 subjects: **t = <!--@cmu_if_vs_ocsvm_t_statistic-->3.11<!--/-->27, p = <!--@cmu_if_vs_ocsvm_p_value-->0.003<!--/-->1**.
 
 Also avoid the "vs 0.51 global model" comparison that appears here — EER 0.5065 is chance level, so
 beating it is not a finding.

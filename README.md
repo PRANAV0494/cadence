@@ -69,7 +69,7 @@ FastAPI/Lambda/DynamoDB collection backend, per-user identity baselines on 51 CM
 CPU-loadable network model.
 
 **What's being rebuilt:** the capture SDK (a key-matching bug corrupted all dwell-derived features —
-85% of recorded human dwell times are negative), the proxy edge (the original Burp extension doesn't
+<!--@legacy_export_negative_dwell_fraction-->85%<!--/--> of recorded human dwell times are negative), the proxy edge (the original Burp extension doesn't
 load), the fusion layer (hand-tuned constants), and the evaluation harness (it scored HTTP responses,
 not predictions).
 
@@ -77,12 +77,12 @@ not predictions).
 
 | Method | Dataset | EER | n |
 |---|---|---|---|
-| Killourhy & Maxion 2009, scaled Manhattan | CMU DSL-StrongPasswordData | **0.0962** | 51 subjects |
-| This work — Local Outlier Factor | CMU DSL-StrongPasswordData | 0.1367 | 51 subjects |
-| This work — One-Class SVM | CMU DSL-StrongPasswordData | 0.1375 | 51 subjects |
-| This work — Isolation Forest | CMU DSL-StrongPasswordData | 0.1532 | 51 subjects |
+| Killourhy & Maxion 2009, scaled Manhattan | CMU DSL-StrongPasswordData | **<!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->** | 51 subjects |
+| This work — Local Outlier Factor | CMU DSL-StrongPasswordData | <!--@cmu_lof_eer-->0.1367<!--/--> | 51 subjects |
+| This work — One-Class SVM | CMU DSL-StrongPasswordData | <!--@cmu_ocsvm_eer-->0.1375<!--/--> | 51 subjects |
+| This work — Isolation Forest | CMU DSL-StrongPasswordData | <!--@cmu_isolation_forest_eer-->0.1532<!--/--> | 51 subjects |
 
-One-Class SVM significantly outperforms Isolation Forest (paired *t*-test, t = 3.11, p = 0.003).
+One-Class SVM significantly outperforms Isolation Forest (paired *t*-test, t = <!--@cmu_if_vs_ocsvm_t_statistic-->3.11<!--/-->, p = <!--@cmu_if_vs_ocsvm_p_value-->0.003<!--/-->).
 We are currently **~40% behind a 2009 baseline** — this is a reproduction with a known gap, not a
 result.
 
@@ -97,7 +97,7 @@ result.
 - Keystroke dynamics is a **weak** authenticator on its own — roughly 20× weaker than a password
   (Van Hamme et al., EuroS&P 2023), and vulnerable to statistical forgery and master-key attacks.
   CADENCE treats it as a risk signal that triggers step-up, never as an authentication factor.
-- Participant data so far is 49 people. That is small.
+- Participant data so far is <!--@participants_collected-->49<!--/--> people. That is small.
 
 ## What this is not
 
