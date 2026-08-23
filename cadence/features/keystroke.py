@@ -139,12 +139,39 @@ def _parse_events(events: List[Dict[str, Any]]) -> Tuple[
         key=lambda e: e["timestamp"],
     )
 
-    if keydowns and all(_press_id(e) is None for e in keydowns):
+    missing = [e for e in keydowns if _press_id(e) is None]
+    if missing:
+        # Previously this fired only when *every* keydown lacked seq, so a
+        # partially-stamped stream had those presses silently dropped from
+        # dwell. The SDK never emits a keydown without seq, so any such event
+        # means corruption or tampering.
+        if len(missing) == len(keydowns):
+            raise CorruptEventStreamError(
+                "Event stream has no 'seq' field. Streams captured before the "
+                "key-identity fix paired keydowns with the previous character's "
+                "keyup; their dwell-derived features are unusable. Re-collect "
+                "with edge/cadence-sdk.js."
+            )
         raise CorruptEventStreamError(
-            "Event stream has no 'seq' field. Streams captured before the "
-            "key-identity fix paired keydowns with the previous character's "
-            "keyup; their dwell-derived features are unusable. Re-collect with "
-            "edge/cadence-sdk.js."
+            f"{len(missing)} of {len(keydowns)} keydowns have no 'seq'. The "
+            f"capture SDK stamps every keydown, so a partial stream has been "
+            f"altered or truncated; silently dropping those presses would "
+            f"understate the sample."
+        )
+
+    seen: Dict[Any, int] = {}
+    for e in keydowns:
+        pid = _press_id(e)
+        seen[pid] = seen.get(pid, 0) + 1
+    duplicates = sorted(pid for pid, n in seen.items() if n > 1)
+    if duplicates:
+        # seq is a press identity, so a repeat is not a valid stream: both
+        # presses pair with the same keyup and one dwell sample is counted
+        # twice. Client-supplied identity has to be validated here.
+        raise CorruptEventStreamError(
+            f"Duplicate press identity in event stream: seq {duplicates[:5]}. "
+            f"Each keydown must carry a unique 'seq'; repeats double-count "
+            f"dwell against a single release."
         )
 
     # Match keydown → keyup by press identity.
@@ -306,7 +333,16 @@ def _error_features(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Backspace / correction metrics."""
     all_events_sorted = sorted(events, key=lambda e: e["timestamp"])
 
-    total_keys = len([e for e in events if e["event_type"] == "keydown"])
+    # Denominator: presses that affect the text — characters plus corrections.
+    # Counting every keydown diluted the ratio, since holding Shift for capitals
+    # inflated it without adding text. Backspace stays in: a correction rate
+    # measured against characters alone can exceed 1 and stops being a ratio.
+    total_keys = len([
+        e for e in events
+        if e["event_type"] == "keydown"
+        and not e.get("is_paste")
+        and (e.get("is_backspace") or not e.get("is_modifier"))
+    ])
     backspaces = [e for e in events if e.get("is_backspace") and e["event_type"] == "keydown"]
     backspace_count = len(backspaces)
     backspace_ratio = backspace_count / total_keys if total_keys > 0 else 0.0

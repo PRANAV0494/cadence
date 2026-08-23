@@ -47,6 +47,32 @@
     "Fn", "FnLock", "Hyper", "Super", "Symbol", "SymbolLock",
   ]);
 
+  /**
+   * Other keys that produce no character. Navigation, editing and function keys
+   * were previously flagged is_modifier: false, so they entered dwell, typing
+   * speed and digraph statistics as if they were typed characters.
+   *
+   * event.key is a single character for character-producing keys and a named
+   * string otherwise, so length > 1 catches the general case; these are listed
+   * for clarity and to cover names that are also single characters.
+   */
+  const NON_CHARACTER_KEYS = new Set([
+    "Tab", "Escape", "Enter", "Backspace", "Delete", "Insert",
+    "Home", "End", "PageUp", "PageDown",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "ContextMenu", "PrintScreen", "Pause", "Clear", "Dead", "Unidentified",
+  ]);
+
+  function producesNoCharacter(key) {
+    if (typeof key !== "string") return true;
+    return (
+      MODIFIER_KEYS.has(key) ||
+      NON_CHARACTER_KEYS.has(key) ||
+      /^F\d{1,2}$/.test(key) ||
+      key.length > 1
+    );
+  }
+
   function createRecorder() {
     let seq = 0;
     /** code -> seq of the press currently held down */
@@ -74,7 +100,7 @@
         key: e.key,
         timestamp: performance.now(),
         is_backspace: e.key === "Backspace",
-        is_modifier: MODIFIER_KEYS.has(e.key),
+        is_modifier: producesNoCharacter(e.key),
         is_paste: false,
         is_trusted: e.isTrusted,
       });
@@ -94,7 +120,7 @@
         key: e.key,
         timestamp: performance.now(),
         is_backspace: e.key === "Backspace",
-        is_modifier: MODIFIER_KEYS.has(e.key),
+        is_modifier: producesNoCharacter(e.key),
         is_paste: false,
         is_trusted: e.isTrusted,
       });

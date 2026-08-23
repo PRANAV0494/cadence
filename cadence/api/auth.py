@@ -19,14 +19,26 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 
 def _required(name: str) -> str:
-    try:
-        return os.environ[name]
-    except KeyError:
+    """
+    Read a required setting, treating empty as missing.
+
+    Trapping only KeyError was not enough: `JWT_SECRET_KEY=` is *set* to the
+    empty string, so import succeeded and every admin token was signed with an
+    empty key. That is the same failure the no-defaults rule exists to prevent,
+    reached by a different route — and `.env.example` shipped exactly that line.
+    """
+    value = os.environ.get(name, "").strip()
+    if not value:
         raise RuntimeError(
-            f"{name} is not set. Configuration comes from the environment; there "
-            f"are deliberately no defaults. Copy .env.example to .env and fill it "
-            f"in, or export {name} before starting the API."
-        ) from None
+            f"{name} is not set, or is empty. Configuration comes from the "
+            f"environment and there are deliberately no defaults. Export it "
+            f"before starting the API, for example:\n"
+            f"  export {name}=...\n"
+            f"Nothing in this project reads a .env file automatically; "
+            f".env.example documents the variables, it does not load them. "
+            f"To use one, run: uvicorn cadence.api.main:app --env-file .env"
+        )
+    return value
 
 
 SECRET_KEY = _required("JWT_SECRET_KEY")

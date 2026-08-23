@@ -169,3 +169,65 @@ def test_extract_features_reports_positive_dwell_statistics():
     assert feats["distribution_features"]["min_dwell_time"] > 0
     assert all(d > 0 for d in feats["core_features"]["per_key_dwell_times"])
     assert feats["core_features"]["typing_speed_wpm"] > 0
+
+
+# ── client-supplied identity must be validated server-side ─────
+
+def test_duplicate_press_identity_is_rejected():
+    """
+    seq is a press identity, and it comes from the browser. Two keydowns
+    sharing one both paired with the same keyup, counting one dwell sample
+    twice — accepted silently before.
+    """
+    events = [kd(0, "KeyA", 0.0), kd(0, "KeyB", 10.0), ku(0, "KeyA", 100.0)]
+    with pytest.raises(CorruptEventStreamError, match="Duplicate press identity"):
+        _parse_events(events)
+
+
+def test_partially_stamped_stream_is_rejected():
+    """
+    The legacy guard fired only when *every* keydown lacked seq, so a mixed
+    stream had those presses silently dropped from dwell. The SDK stamps every
+    keydown, so a gap means corruption or tampering.
+    """
+    events = [
+        kd(0, "KeyA", 0.0), ku(0, "KeyA", 90.0),
+        {"event_type": "keydown", "code": "KeyB", "key": "b", "timestamp": 200.0,
+         "is_backspace": False, "is_paste": False},
+    ]
+    with pytest.raises(CorruptEventStreamError, match="have no 'seq'"):
+        _parse_events(events)
+
+
+def test_non_character_keys_are_excluded_from_timing():
+    """Tab, Escape, Arrow keys and F-keys produce no text."""
+    events = [
+        {**kd(0, "Tab", 0.0), "is_modifier": True},
+        {**ku(0, "Tab", 120.0), "is_modifier": True},
+        kd(1, "KeyA", 200.0), ku(1, "KeyA", 285.0),
+    ]
+    _, _, dwell, _ = _parse_events(events)
+
+    assert dwell == [85.0]
+
+
+def test_backspace_ratio_counts_characters_not_modifiers():
+    """
+    total_keys counted every keydown including Shift, so holding Shift for
+    capitals diluted the denominator without adding any text.
+    """
+    events = [
+        {**kd(0, "ShiftLeft", 0.0), "is_modifier": True},
+        {**ku(0, "ShiftLeft", 300.0), "is_modifier": True},
+        kd(1, "KeyA", 50.0), ku(1, "KeyA", 135.0),
+        {**kd(2, "Backspace", 400.0), "is_backspace": True},
+        {**ku(2, "Backspace", 480.0), "is_backspace": True},
+    ]
+    feats = extract_features(events)
+
+    # Shift is out of the denominator; the backspace stays in, because a
+    # correction rate measured against characters alone can exceed 1.
+    # One character + one backspace = 2 text-affecting presses, 1 correction.
+    assert feats["error_features"]["backspace_ratio"] == 0.5
+    # Counting the Shift press too would have given 1/3.
+    assert feats["error_features"]["backspace_count"] == 1

@@ -81,8 +81,11 @@ RETRACTED = {
 }
 
 # Sources that legitimately do not resolve to a path in this repository:
-# published work, and files excluded from version control.
-EXTERNAL_PREFIXES = ("external:", "private:")
+# published work, files excluded from version control, and values computed from
+# other declared results. "derived:" must name those results, so a computed
+# number still points somewhere checkable instead of citing this file itself.
+EXTERNAL_PREFIXES = ("external:", "private:", "derived:")
+DERIVED_PREFIX = "derived:"
 
 
 def load_results() -> dict:
@@ -115,7 +118,19 @@ def check_provenance(results: dict, root: Path = ROOT) -> list[str]:
         source = r.get("source")
         if not source:
             problems.append(f"{key}: no 'source' — cannot be traced to a computation")
-        elif not source.startswith(EXTERNAL_PREFIXES):
+        elif source.startswith(DERIVED_PREFIX):
+            names = [n.strip() for n in source[len(DERIVED_PREFIX):].split(",") if n.strip()]
+            if not names:
+                problems.append(f"{key}: 'derived:' names no source results")
+            for n in names:
+                if n not in results:
+                    problems.append(f"{key}: derived from {n!r}, which is not a result")
+        elif source.startswith(EXTERNAL_PREFIXES):
+            # An 'external:' or 'private:' marker with nothing after it is not
+            # provenance, it is an opt-out from the check.
+            if not source.split(":", 1)[1].strip():
+                problems.append(f"{key}: source {source!r} has no detail after the prefix")
+        else:
             target = root / source.split("#", 1)[0]  # strip an anchor like #cell-11
             if not target.exists():
                 problems.append(
@@ -124,8 +139,14 @@ def check_provenance(results: dict, root: Path = ROOT) -> list[str]:
                 )
 
         # A counting unit describes a population; every other result needs an n.
-        if r.get("unit") != "people" and not any(k.startswith("n_") for k in r):
+        counts = {k: v for k, v in r.items() if k.startswith("n_")}
+        if r.get("unit") != "people" and not counts:
             problems.append(f"{key}: no sample count (n_subjects / n_rows)")
+        for name, n in counts.items():
+            # n_subjects: 0 or null satisfied a presence check while telling the
+            # reader nothing. A sample count has to be a positive number.
+            if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+                problems.append(f"{key}: {name} is {n!r}; a sample count must be a positive integer")
     return problems
 
 
@@ -136,6 +157,83 @@ SMUGGLE_BEFORE = re.compile(r"(?:[\d+\-−]|\d\.)\Z")  # \Z, not $: $ also match
 # Trailing: more digits, a decimal point *followed by* a digit, an exponent, or
 # a percent sign. A lone '.' is sentence punctuation, not smuggling.
 SMUGGLE_AFTER = re.compile(r"^(?:\d|\.\d|[eE][-+]?\d|%)")
+
+
+# Wrappers a claim may legitimately carry: bold/italic/code emphasis, and the
+# units or symbols that surround a number in prose.
+_ALLOWED_WRAPPERS = re.compile(r"[*_`\s%]|&nbsp;|ms\b|percent\b", re.IGNORECASE)
+# Anything comment-shaped inside a marker body is stripped before rendering, so
+# digits hidden behind it are displayed but were never compared.
+_ANY_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_HTML_ENTITY = re.compile(r"&#x?[0-9a-fA-F]+;|&[a-zA-Z]+;")
+
+
+def _render_with_retraction_cover(text: str) -> tuple[str, list[bool]]:
+    """
+    Return the text as a reader sees it, plus a per-character flag for whether
+    that character sits inside a retraction span.
+
+    Comment *markers* are invisible; the text between them is not. So
+    `4.7e-2<!--!retracted-->1<!--/-->` renders as `4.7e-21` — the digit inside
+    the span is displayed. Deleting whole spans hid that: the literal never
+    formed, so the check passed while readers saw a live retracted value.
+
+    A mention is legitimate only when the entire literal is covered by a span,
+    which is what wrapping is supposed to mean.
+    """
+    rendered: list[str] = []
+    covered: list[bool] = []
+    inside = False
+    pos = 0
+
+    for m in _ANY_COMMENT.finditer(text):
+        chunk = text[pos : m.start()]
+        rendered.append(chunk)
+        covered.extend([inside] * len(chunk))
+
+        token = m.group()
+        if token.startswith(RETRACTION_OPEN):
+            inside = True
+        elif token == "<!--/-->":
+            inside = False
+        pos = m.end()
+
+    tail = text[pos:]
+    rendered.append(tail)
+    covered.extend([inside] * len(tail))
+    return "".join(rendered), covered
+
+
+def _uncovered_retracted(text: str) -> list[str]:
+    """Retracted literals that render without being fully inside a span."""
+    rendered, covered = _render_with_retraction_cover(text)
+    found = []
+    for bad in RETRACTED:
+        for m in re.finditer(re.escape(bad), rendered):
+            if not all(covered[m.start() : m.end()]):
+                found.append(bad)
+                break
+    return found
+
+
+def _body_is_only_a_number(text: str) -> bool:
+    """
+    True when the marker body renders as exactly one number.
+
+    Taking the first number substring was not enough. These all render 3.1127
+    while only 3.11 was compared:
+
+        <!--@t-->3.11<!--x-->27<!--/-->
+        <!--@t-->3.11<!---->27<!--/-->
+        <!--@t-->3.11&#50;7<!--/-->
+
+    That is the precision-smuggling defect again, moved inside the span. The
+    body must contain a number and nothing else that can render as one.
+    """
+    if _ANY_COMMENT.search(text) or _HTML_ENTITY.search(text):
+        return False
+    stripped = _ALLOWED_WRAPPERS.sub("", text.replace("−", "-"))
+    return bool(re.fullmatch(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", stripped))
 
 
 def _shown_number(text: str) -> tuple[float, int, bool] | None:
@@ -175,14 +273,16 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
         if text.count(RETRACTION_OPEN) != len(RETRACTION_NOTICE.findall(text)):
             problems.append(f"{rel}: malformed retraction marker — missing <!--/-->.")
 
-        asserted = RETRACTION_NOTICE.sub("", text)
-        for bad, why in RETRACTED.items():
-            if bad in asserted:
-                problems.append(
-                    f"{rel}: asserts retracted value {bad} — {why}. If documenting "
-                    f"the retraction, wrap it in <!--!retracted-->...<!--/-->."
-                )
-                break  # one report per document is enough
+        # Compare against what renders, and require the whole literal to sit
+        # inside a retraction span. Wrapping only a fragment --
+        # `p = 4.7e-2<!--!retracted-->1<!--/-->` -- displays the live value with
+        # no visible marker.
+        for bad in _uncovered_retracted(text):
+            problems.append(
+                f"{rel}: renders retracted value {bad} — {RETRACTED[bad]}. Wrap "
+                f"the whole literal in <!--!retracted-->...<!--/-->, not part of it."
+            )
+            break  # one report per document is enough
 
         for match in CLAIM.finditer(text):
             key, shown = match.group(1), match.group(2)
@@ -209,13 +309,28 @@ def check_claims(results: dict, docs: dict[str, str]) -> tuple[list[str], int]:
                     f"The whole displayed number must be inside the markers."
                 )
 
+            if not _body_is_only_a_number(shown):
+                problems.append(
+                    f"{rel}:{line}: claim '{key}' body {shown!r} is not a plain "
+                    f"number. Comments or entities inside a marker render digits "
+                    f"that are never compared."
+                )
+                continue
+
             parsed = _shown_number(shown)
             if parsed is None:
                 problems.append(f"{rel}:{line}: claim '{key}' has no number in {shown!r}")
                 continue
             found, decimals, scientific = parsed
 
-            declared = float(results[key]["value"])
+            raw = results[key].get("value")
+            if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+                problems.append(
+                    f"{rel}:{line}: claim '{key}' has a non-numeric value "
+                    f"({raw!r}) in results.json"
+                )
+                continue
+            declared = float(raw)
 
             is_percent = results[key].get("unit") == "percent"
             if is_percent:

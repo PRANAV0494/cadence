@@ -21,9 +21,16 @@ Commit messages use plain imperative mood: `fix: match keydown/keyup by press se
 ## Never commit
 
 - **`data/private/`** — real participant data. This study collected keystroke timings from
-  <!--@participants_collected-->49<!--/--> people under consent; their data does not leave the machine it was collected on.
-  Pseudonymise to stable hashes before any analysis leaves this repo, and keep the mapping out
-  of version control.
+  <!--@participants_collected-->49<!--/--> people under consent.
+
+  Be accurate about where that data already is. It was captured in the browser and **POSTed to a
+  live API** (`edge/reference/capture.js.BUGGY` → API Gateway → DynamoDB), and the CSV in
+  `data/private/` was exported from that table with usernames unredacted. So identified records
+  exist in at least three places: the DynamoDB table, any export on a developer machine, and any
+  backup of either. Treat the live table as in scope for data handling, not just this directory.
+
+  Do not commit the exports. Pseudonymise to stable hashes before any analysis leaves this repo,
+  and keep the mapping out of version control.
 - **Secrets of any kind** — JWT signing keys, AWS credentials, admin password hashes.
   All configuration comes from environment variables. `cadence/api/auth.py` intentionally has
   **no defaults**: it raises on startup if the environment is unset, rather than silently
@@ -41,8 +48,8 @@ an adversarial reading is worse than no result.
 
 - **Report sample counts and confidence intervals on every number.** A table row without an *n*
   is not a result.
-- **Include baselines you lose to.** Killourhy & Maxion (2009) report EER **<!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->** with scaled
-  Manhattan distance on the same 51 CMU subjects; our best is currently **<!--@cmu_lof_eer-->0.1367<!--/-->**. That gap is
+- **Include baselines you lose to.** Killourhy & Maxion (2009) report EER **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->** with scaled
+  Manhattan distance on the same <!--@cmu_subjects-->51<!--/--> CMU subjects; our best is currently **<!--@cmu_lof_eer-->0.1367<!--/-->**. That gap is
   stated in the README and stays there until it closes.
 - **Lead with out-of-distribution generalisation**, not in-distribution accuracy. For automation
   detection this means leave-one-agent-out: train on N−1 agent frameworks, test on the held-out
@@ -60,7 +67,7 @@ These are documented rather than hidden. Do not import from them, and do not cit
 
 | Location | Defect |
 |---|---|
-| `edge/reference/capture.js.BUGGY` | Keys events by `selectionStart`, which sits before the inserted character on keydown and after it on keyup — so every keydown was matched to the **previous** character's keyup. <!--@legacy_export_negative_dwell_fraction-->85%<!--/--> of recorded human dwell times are negative (median <!--@legacy_export_median_dwell_ms-->−285.5<!--/--> ms). Key events by `e.code` plus a monotonic press counter instead. |
+| `edge/reference/capture.js.BUGGY` | Records `key_index` from `selectionStart`, which sits before the inserted character on keydown and after it on keyup — so every keydown was matched to the **previous** character's keyup. <!--@legacy_export_negative_dwell_fraction-->85%<!--/--> of recorded human dwell times are negative (median <!--@legacy_export_median_dwell_ms-->−285.5<!--/--> ms). Key events by `e.code` plus a monotonic press counter instead. |
 | `models/automation/` | The 1.0 accuracy / 1.0 AUC result is a measurement of the bug above: the classes separate perfectly on `dwell < 0`. Not a real result. |
 | `reference/legacy_app/feature_extractor.py` | `extract_attack_signatures()` folds HTTP headers into the scanned string, so the pattern `(--\|#\|/\*)` matches an ordinary `Accept: */*` header and flags every browser request as SQL injection. `extract_network_features()` fabricates CICIDS flow features from HTTP metadata using hardcoded constants, producing out-of-distribution input for a model trained on real packet captures. |
 | `evaluation/reference/evaluate_bot.py` | Sets `passed = True` on HTTP 200 *or* 403 — it measures whether the API responded, not whether the prediction was correct. |

@@ -67,7 +67,8 @@ jobs:
       # exist because that has nearly happened once already.
       - name: No participant data
         run: |
-          if git ls-files | grep -E '^data/private/|keystroke_export_.*\.csv$'; then
+          # Case-insensitive: a Windows checkout can yield data/Private/.
+          if git ls-files | grep -iE '^data/private/|keystroke_export_.*\.csv$|\.participant\.csv$'; then
             echo "::error::Participant data is committed. Remove it and verify .gitignore."
             exit 1
           fi
@@ -75,7 +76,7 @@ jobs:
 
       - name: No third-party datasets
         run: |
-          if git ls-files | grep -E 'DSL-StrongPasswordData\.csv|^data/(keyrecs|aalto)/'; then
+          if git ls-files | grep -iE 'DSL-StrongPasswordData\.csv|^data/(keyrecs|aalto)/'; then
             echo "::error::A redistributed dataset is committed. Ship a download script instead."
             exit 1
           fi
@@ -83,7 +84,12 @@ jobs:
 
       - name: No large or unexpected model blobs
         run: |
-          unexpected=$(git ls-files | grep -E '\.(pkl|joblib)$' | grep -v '^models/network/' || true)
+          # Allowlist the two specific files, not the directory. A directory
+          # allowlist let any pickle dropped into models/network/ through, and
+          # the 10 MB backstop is per file — the 153 per-user identity models
+          # (~1.5 MB each) would have fitted comfortably.
+          unexpected=$(git ls-files | grep -E '\.(pkl|joblib)$' \
+            | grep -vE '^models/network/cicids2017_(scaler|xgboost_model)\.pkl$' || true)
           if [ -n "$unexpected" ]; then
             echo "::error::Model blobs outside models/network/ are committed:"
             echo "$unexpected"
@@ -100,30 +106,32 @@ jobs:
           fi
           echo "OK — no unexpected or oversized binaries."
 
-      - name: No hardcoded credentials
+      - name: No tracked env or secrets files
         run: |
-          # Config must come from the environment. auth.py deliberately has no
-          # defaults so it fails fast rather than signing with a shared key.
-          # The bracket in 'produc[t]ion' stops this pattern matching its own
-          # text in this file. Excluding the workflow instead would create a
-          # blind spot: a real secret committed to a workflow is exactly the
-          # kind that leaks, since Actions logs are public on public repos.
-          hits=$(git grep -nIE \
-            'change-me-in-produc[t]ion|[A-Za-z0-9_]*(PASSWORD|SECRET|TOKEN|API_KEY)[A-Za-z0-9_]*[[:space:]]*=[[:space:]]*"[^"]{8,}"|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----' \
-            -- ':!docs/*' ':!CONTRIBUTING.md' ':!MANIFEST.md' ':!notebooks/*' ':!*.ipynb' || true)
-          if [ -n "$hits" ]; then
-            echo "::error::Possible hardcoded credential:"
-            echo "$hits"
+          # Gitignored is not guarded: `git add -f` bypasses .gitignore entirely.
+          if git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.[^/]+$|samconfig\.local\.toml$' \
+             | grep -v '^\.env\.example$'; then
+            echo "::error::An environment or secrets file is tracked."
             exit 1
           fi
-          echo "OK — no hardcoded credentials in source."
+          echo "OK — no tracked env files."
+
+      - name: Notebooks do not carry the retracted p-value
+        run: |
+          # check_docs.py scans markdown only, and notebooks are where the
+          # fabricated statistic originated. A plain substring check is enough.
+          if git ls-files '*.ipynb' | xargs -r grep -l -e '4\.7e-21' -e '4\.689e-21' -e '4\.689064502037325e-21'; then
+            echo "::error::A notebook contains the retracted p-value. Clear the cell output or annotate it."
+            exit 1
+          fi
+          echo "OK — no retracted value in notebooks."
+
+      - name: No hardcoded credentials
+        # Implemented in scripts/check_secrets.py so it can be imported by
+        # tests. An embedded heredoc could not be, and a local check that
+        # retyped the logic passed while the workflow itself was broken.
+        run: python scripts/check_secrets.py
+
 
       - name: Deploy template ships no secret defaults
-        run: |
-          # These were CloudFormation parameter defaults, so `sam deploy`
-          # without an override shipped them as the production signing key.
-          if grep -nE 'Default:.*(change-me|\$2b\$)' deploy/template.yaml; then
-            echo "::error::deploy/template.yaml has a secret Default. Remove it."
-            exit 1
-          fi
-          echo "OK — no secret defaults in the deploy template."
+        run: python scripts/check_deploy_template.py

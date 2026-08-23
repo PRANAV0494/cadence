@@ -15,11 +15,11 @@
   ],
   "results": {
     "cmu_baseline_scaled_manhattan_eer": {
-      "value": 0.0962,
+      "value": 0.096,
       "n_subjects": 51,
       "dataset": "CMU DSL-StrongPasswordData",
-      "source": "external: Killourhy & Maxion, DSN 2009",
-      "description": "Published baseline. We do not beat this yet."
+      "source": "external: Killourhy & Maxion, DSN 2009, Table 2 (Manhattan scaled)",
+      "description": "Published baseline on the same 51 subjects. Reported as 0.096 (SD 0.069). Previously stored as 0.0962, a digit that appears in no computation in this repository and could not be traced to the paper; transcribed from a summary. We do not beat this yet."
     },
     "cmu_lof_eer": {
       "value": 0.1367,
@@ -77,6 +77,19 @@
       "unit": "people",
       "source": "private:data/private/keystroke_export_20260513.csv",
       "description": "Distinct consenting participants in the collection study."
+    },
+    "cmu_subjects": {
+      "value": 51,
+      "unit": "people",
+      "source": "external: Killourhy & Maxion, DSN 2009, Section 3 (subject pool)",
+      "description": "Subjects in the CMU DSL-StrongPasswordData benchmark. Every per-user EER in this table is computed across all of them."
+    },
+    "cmu_gap_to_baseline_percent": {
+      "value": 42.4,
+      "unit": "percent",
+      "n_subjects": 51,
+      "source": "derived: cmu_lof_eer, cmu_baseline_scaled_manhattan_eer",
+      "description": "How far our best EER sits above the published baseline: 0.1367 / 0.096 - 1. Stated as ~40% before, which understated it."
     }
   }
 }

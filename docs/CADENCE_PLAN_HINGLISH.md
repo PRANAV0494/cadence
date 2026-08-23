@@ -219,8 +219,8 @@ Claim karo **"first open-source implementation"**, kabhi "novel idea" nahi.
 hai ki isse system *evaluable* ban jaata hai.
 
 **7. Per-user keystroke models — naya nahi, aur abhi baseline se neeche hai.** CMU pe tumhara best LOF
-<!--@cmu_lof_eer-->0.1367<!--/--> hai. Killourhy & Maxion (DSN 2009), *usi 51 subjects aur usi CSV pe jo tumhare paas hai*,
-scaled Manhattan se **<!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->** report karte hain. Tum 2009 ke baseline se ~40% peeche ho. Isko
+<!--@cmu_lof_eer-->0.1367<!--/--> hai. Killourhy & Maxion (DSN 2009), *usi <!--@cmu_subjects-->51<!--/--> subjects aur usi CSV pe jo tumhare paas hai*,
+scaled Manhattan se **<!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->** report karte hain. Tum 2009 ke baseline se ~40% peeche ho. Isko
 reproduction batao known gap ke saath, "result" kabhi mat bolo.
 
 **8. 6-dataset IDS zoo aur "SHAP explanations" — zero novelty, aur SHAP wali baat abhi sach nahi hai.**
@@ -347,7 +347,7 @@ cadence/
 
 **README mein isi order mein hona chahiye:** (1) 90-second demo GIF sabse upar; (2) ek paragraph
 jismein threat model exactly likha ho; (3) results table **har row mein confidence intervals aur
-sample counts ke saath**; (4) **ek baseline row jisse tum haar rahe ho** — scaled Manhattan <!--@cmu_baseline_scaled_manhattan_eer-->0.0962<!--/-->
+sample counts ke saath**; (4) **ek baseline row jisse tum haar rahe ho** — scaled Manhattan <!--@cmu_baseline_scaled_manhattan_eer-->0.096<!--/-->
 tumhare <!--@cmu_lof_eer-->0.1367<!--/--> ke bagal mein; (5) **Limitations section Installation ke UPAR** (jagah hi signal hai);
 (6) leave-one-agent-out number headline mein, in-distribution accuracy nahi; (7) exact reproduction
 commands, pinned deps, seeds; (8) ethics/consent statement; (9) prior-art table with

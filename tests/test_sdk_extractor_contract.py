@@ -34,7 +34,6 @@ def run_sdk(script_body: str):
     const {{ createRecorder }} = require({json.dumps(str(SDK))});
     const r = createRecorder();
     let now = 0;
-    const _p = performance.now;
     performance.now = () => now;
     const advance = (ms) => {{ now += ms; }};
     const down = (code, key) => r.onKeyDown({{ code, key, repeat: false, isTrusted: true }});
@@ -152,3 +151,29 @@ def test_untrusted_events_are_marked():
     events = run_sdk(script)
 
     assert all(e["is_trusted"] is False for e in events)
+
+
+def test_non_character_keys_are_flagged_by_the_sdk_itself():
+    """
+    The finding was that the SDK set is_modifier: false on Tab, Escape, arrows
+    and F-keys, so they entered dwell, typing speed and digraphs. An extractor
+    test that hand-sets the flag proves nothing about that — it has to come
+    from cadence-sdk.js.
+    """
+    events = run_sdk(
+        """
+        down('Tab','Tab');             advance(140); up('Tab','Tab');       advance(60);
+        down('Escape','Escape');       advance(130); up('Escape','Escape'); advance(60);
+        down('ArrowLeft','ArrowLeft'); advance(120); up('ArrowLeft','ArrowLeft'); advance(60);
+        down('F1','F1');               advance(150); up('F1','F1');         advance(60);
+        down('KeyA','a');              advance(85);  up('KeyA','a');
+        """
+    )
+    flags = {e["key"]: e["is_modifier"] for e in events if e["event_type"] == "keydown"}
+    assert flags == {"Tab": True, "Escape": True, "ArrowLeft": True, "F1": True, "a": False}
+
+    feats = extract_features(events)
+    # Only the letter contributes; the long non-character holds are excluded.
+    assert feats["core_features"]["per_key_dwell_times"] == [85.0]
+    assert all("Tab" not in p and "F1" not in p
+               for p in feats["digraph_features"]["digraph_latencies"])
