@@ -28,8 +28,22 @@ import sys
 from pathlib import Path
 
 # Documentation about secrets discusses them by name; that is not a leak.
-SKIP_PREFIXES = ("docs/", "CONTRIBUTING.md", "MANIFEST.md", "scripts/check_secrets.py")
-SKIP_EXACT = {".env.example"}
+SKIP_PREFIXES = ("docs/", "CONTRIBUTING.md", "MANIFEST.md")
+
+# Two files must hold secret-shaped strings to do their job: this scanner
+# (its own patterns) and its test suite (fixtures that have to look real, or
+# they would not test anything). Both are skipped by exact path so the
+# exemption cannot widen to a directory.
+#
+# This is deliberately narrow. It was found the hard way: the test file was
+# still untracked when the suite was first run, so `git ls-files` did not
+# include it and the scan passed locally while CI, which sees the committed
+# tree, flagged all eight fixtures.
+SKIP_EXACT = {
+    ".env.example",
+    "scripts/check_secrets.py",
+    "tests/test_repo_guards.py",
+}
 
 NAMES = (
     r"(?:JWT_SECRET_KEY|JwtSecretKey|ADMIN_PASSWORD_HASH|AdminPasswordHash"

@@ -101,6 +101,28 @@ def test_scanner_does_not_flag_its_own_patterns():
     assert not any("check_secrets" in h for h in scan_repo())
 
 
+def test_self_exemptions_are_exact_paths_not_directories():
+    """
+    Only two files may hold secret-shaped strings: the scanner and this file.
+    A directory-level exemption would silently cover future files -- the same
+    mistake the models/network/ blob allowlist made.
+    """
+    from check_secrets import SKIP_EXACT, SKIP_PREFIXES
+
+    assert SKIP_EXACT == {
+        ".env.example",
+        "scripts/check_secrets.py",
+        "tests/test_repo_guards.py",
+    }
+    assert not any(p.startswith(("scripts/", "tests/")) for p in SKIP_PREFIXES)
+
+
+def test_a_secret_in_another_test_file_would_still_be_caught():
+    """The exemption is this file only, not tests/ generally."""
+    assert scan_repo(["tests/test_api_submit.py"]) == []
+    assert scan_line('SECRET_KEY = "realkeyinanothertest"') is True
+
+
 # ── deploy template guard ──────────────────────────────────────
 
 def test_default_on_a_secret_parameter_is_caught():
