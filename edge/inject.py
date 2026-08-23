@@ -8,6 +8,9 @@ BOOT_BLOCK = """<script id="cadence-sdk-boot">
   window.__CADENCE_SDK_LOADED = true;
   var r = CadenceSDK.createRecorder();
   r.attach(document);
+  var send = function () { CadenceSDK.flush(r); };
+  window.addEventListener("pagehide", send);
+  window.setInterval(send, 5000);
 })();
 </script>"""
 

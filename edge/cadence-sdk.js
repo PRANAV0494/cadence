@@ -161,6 +161,16 @@
       getEvents: function () {
         return events.slice();
       },
+      drain: function () {
+        /**
+         * Hand off the buffer for sending and keep recording. Unlike reset(),
+         * seq and inFlight survive, so the next event still has a unique id and
+         * pairing across a flush boundary stays correct.
+         */
+        const out = events.slice();
+        events.length = 0;
+        return out;
+      },
       reset: function () {
         seq = 0;
         inFlight.clear();
@@ -173,7 +183,46 @@
     };
   }
 
-  const api = { createRecorder: createRecorder };
+  /**
+   * Send drained events to the proxy's own endpoint. The proxy owns this
+   * path; it is never forwarded upstream. `sendBeacon` is preferred because
+   * it survives page unload; `fetch` is the fallback for browsers that lack
+   * it or reject the payload.
+   *
+   * Events handed to a sender are never re-drained: a failed send is
+   * reported in the return value ({ sent: 0, error: "send-failed" }) and
+   * dropped, not retried, because a retry after a partial write could
+   * double-count a dwell sample.
+   */
+  const TELEMETRY_PATH = "/__cadence/telemetry";
+
+  function flush(recorder, transport) {
+    const t = transport || {
+      beacon: function (url, body) {
+        return typeof navigator !== "undefined"
+          && typeof navigator.sendBeacon === "function"
+          && navigator.sendBeacon(url, body);
+      },
+      fetchPost: function (url, body) {
+        if (typeof fetch !== "function") return false;
+        try {
+          fetch(url, { method: "POST", body: body, keepalive: true });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      },
+    };
+
+    const events = recorder.drain();
+    if (!events.length) return { sent: 0 };
+    const body = JSON.stringify({ events: events });
+    const url = TELEMETRY_PATH;
+    const ok = t.beacon(url, body) || t.fetchPost(url, body);
+    return { sent: ok ? events.length : 0, error: ok ? null : "send-failed" };
+  }
+
+  const api = { createRecorder: createRecorder, flush: flush, TELEMETRY_PATH: TELEMETRY_PATH };
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
