@@ -33,4 +33,10 @@ norecursedirs = ["tests/legacy", "reference", "notebooks", "data"]
 addopts = "-q"
 
 [tool.setuptools.packages.find]
-include = ["cadence*"]
+include = ["cadence*", "edge*"]
+
+[tool.setuptools.package-data]
+# cadence proxy hands mitmproxy a real file path for the addon; the SDK
+# source is read at addon import. Without these, pip install . ships the
+# Python but not the files the CLI needs (review finding on #8).
+edge = ["*.js", "*.py"]

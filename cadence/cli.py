@@ -9,10 +9,31 @@ import sys
 from pathlib import Path
 
 
-def _proxy(args) -> None:
-    addon = Path(__file__).resolve().parents[1] / "edge" / "addon.py"
+def _addon_path() -> str:
+    """Real filesystem path of edge/addon.py.
+
+    Works in a checkout (edge/ beside the package) and after
+    pip install . (edge/ is an installed package whose .js/.py files are
+    package data). mitmproxy's -s flag needs an actual file, so the data
+    must be installed, not merely importable.
+    """
+    try:
+        import edge  # installed package, or the repo's edge/ on sys.path
+    except ImportError as exc:
+        raise ImportError(
+            "the edge package is not installed; run from the repo or pip install ."
+        ) from exc
+    addon = Path(edge.__file__).resolve().parent / "addon.py"
     if not addon.is_file():
-        sys.exit(f"cadence: proxy addon missing: {addon}")
+        raise OSError(f"edge package has no addon.py: {addon}")
+    return str(addon)
+
+
+def _proxy(args) -> None:
+    try:
+        addon = _addon_path()
+    except (ImportError, OSError):
+        sys.exit("cadence: proxy addon missing — install the package (pip install .) or run from the repo")
     mitmdump = shutil.which("mitmdump")
     if not mitmdump:
         print('cadence: mitmdump not found. Install it with: pip install "cadence[proxy]"', file=sys.stderr)
@@ -26,7 +47,7 @@ def _proxy(args) -> None:
         [
             mitmdump,
             "-s",
-            str(addon),
+            addon,
             "--listen-host",
             args.host,
             "--listen-port",
