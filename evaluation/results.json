@@ -90,6 +90,30 @@
       "n_subjects": 51,
       "source": "derived: cmu_lof_eer, cmu_baseline_scaled_manhattan_eer",
       "description": "How far our best EER sits above the published baseline: 0.1367 / 0.096 - 1. Stated as ~40% before, which understated it."
+    },
+    "detector_automation_tpr": {
+      "value": 1.0,
+      "n_streams": 50,
+      "source": "evaluation/calibrate_detectors.py",
+      "description": "Automation detector true-positive rate on the labelled fixture (constant-rate machine bursts with two think pauses each, 50 seeds). Fixture-derived, not field-derived."
+    },
+    "detector_automation_fpr": {
+      "value": 0.0,
+      "n_streams": 50,
+      "source": "evaluation/calibrate_detectors.py",
+      "description": "Automation detector false-positive rate on HUMAN streams only (50 seeds). Takeovers are excluded: their trailing machine segment is genuinely automation."
+    },
+    "detector_drift_tpr": {
+      "value": 0.98,
+      "n_streams": 50,
+      "source": "evaluation/calibrate_detectors.py",
+      "description": "Drift detector true-positive rate on takeover streams (human then sharp machine), 50 seeds. Fixture-derived."
+    },
+    "detector_drift_fpr": {
+      "value": 0.0,
+      "n_streams": 50,
+      "source": "evaluation/calibrate_detectors.py",
+      "description": "Drift detector false-positive rate on single-typist human streams, 50 seeds."
     }
   }
 }
