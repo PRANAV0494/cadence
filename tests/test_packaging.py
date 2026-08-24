@@ -45,14 +45,14 @@ def test_wheel_contains_the_edge_files(tmp_path):
     wheels = list(out.glob("*.whl"))
     assert wheels, f"wheel build failed: {build.stderr[-400:]}"
     names = set(zipfile.ZipFile(wheels[0]).namelist())
+    # Assert only what exists on main today. Files landing in later PRs
+    # (automation/drift/fusion) enter this list when their PRs merge —
+    # asserting them now would fail the retargeted base.
     for needed in (
+        "edge/__init__.py",
         "edge/addon.py",
         "edge/inject.py",
         "edge/cadence-sdk.js",
         "edge/provenance.py",
-        "edge/automation.py",
-        "edge/drift.py",
-        "edge/fusion.py",
-        "edge/__init__.py",
     ):
         assert needed in names, f"{needed} missing from wheel"

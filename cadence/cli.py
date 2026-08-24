@@ -17,9 +17,16 @@ def _addon_path() -> str:
     package data). mitmproxy's -s flag needs an actual file, so the data
     must be installed, not merely importable.
     """
-    import edge  # installed package, or the repo's edge/ on sys.path
-
-    return str(Path(edge.__file__).resolve().parent / "addon.py")
+    try:
+        import edge  # installed package, or the repo's edge/ on sys.path
+    except ImportError as exc:
+        raise ImportError(
+            "the edge package is not installed; run from the repo or pip install ."
+        ) from exc
+    addon = Path(edge.__file__).resolve().parent / "addon.py"
+    if not addon.is_file():
+        raise OSError(f"edge package has no addon.py: {addon}")
+    return str(addon)
 
 
 def _proxy(args) -> None:
