@@ -131,6 +131,16 @@ def main(argv=None) -> None:
     doctor = sub.add_parser("doctor", help="check the proxy's prerequisites")
     doctor.set_defaults(func=_doctor)
 
+    eval_parser = sub.add_parser("eval", help="replay a saved session through detectors + fusion")
+    eval_parser.add_argument("session", help="session JSONL file to replay")
+
+    def _eval(args):
+        from cadence import eval as eval_module
+
+        return eval_module.main([args.session])
+
+    eval_parser.set_defaults(func=_eval)
+
     args = parser.parse_args(argv)
     result = args.func(args)
     if result is not None:
