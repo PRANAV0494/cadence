@@ -55,11 +55,21 @@ def replay(rounds: list[list[dict]]) -> dict:
     last_flags: dict[str, object] = {}
     first_ts = None
     detect_ts = None
+    keystrokes = 0
+    keystrokes_to_detect = None
+    sticky = None  # once step-up, only clean clears (the addon's rule)
     history: list[dict] = []
 
     for i, events in enumerate(rounds):
         round_last_ts = None
         for e in events:
+            if (
+                e.get("event_type") == "keydown"
+                and not e.get("is_modifier")
+                and not e.get("is_paste")
+                and not e.get("is_backspace")
+            ):
+                keystrokes += 1
             ts = e.get("timestamp")
             if isinstance(ts, (int, float)):
                 if first_ts is None:
@@ -77,7 +87,15 @@ def replay(rounds: list[list[dict]]) -> dict:
                 last_flags[name] = fired
         state = update(llr, fresh)
         llr = state["llr"]
-        decision = state["decision"]
+        # The addon's stickiness: once step-up, only clean clears. A later
+        # 'continue' round must not lift a step-up - the evidence that
+        # crossed the bound is still in the sum.
+        if sticky == "step-up":
+            decision = "step-up" if state["decision"] != "clean" else "clean"
+        else:
+            decision = state["decision"]
+        if decision in ("step-up", "clean"):
+            sticky = decision
         history.append({"round": i, "llr": round(llr, 3), "decision": decision})
         if decision in ("step-up", "clean"):
             # Terminal rounds timestamp detection. LATER terminal rounds
@@ -87,6 +105,7 @@ def replay(rounds: list[list[dict]]) -> dict:
             # decision's moment is the honest "when did we know".
             if round_last_ts is not None:
                 detect_ts = round_last_ts
+            keystrokes_to_detect = keystrokes
     ttd = None
     if first_ts is not None and detect_ts is not None and any(
         h["decision"] != "continue" for h in history
@@ -96,6 +115,7 @@ def replay(rounds: list[list[dict]]) -> dict:
         "decision": decision,
         "rounds": len(rounds),
         "history": history,
+        "keystrokes_to_detect": keystrokes_to_detect,
         "time_to_detect_ms": ttd,
         "bounds": {"lower": round(lo, 3), "upper": round(hi, 3)},
     }
@@ -120,6 +140,8 @@ def main(argv=None) -> int:
     for h in result["history"]:
         print(f"round {h['round']:>3}  llr {h['llr']:>8}  {h['decision']}")
     print(f"decision: {result['decision']}  rounds: {result['rounds']}")
+    kd = result["keystrokes_to_detect"]
+    print(f"keystrokes-to-detect: {'n/a' if kd is None else kd}")
     ttd = result["time_to_detect_ms"]
     print(f"time-to-detect: {'n/a' if ttd is None else f'{ttd:.0f} ms'}")
     return 0
