@@ -17,6 +17,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from automation import is_automated  # noqa: E402
+from console import (  # noqa: E402
+    CONSOLE_PATH,
+    CONSOLE_STATE_PATH,
+    PAGE,
+    replace_state_path,
+    snapshot,
+)
 from drift import drift_signal  # noqa: E402
 from fusion import update  # noqa: E402
 from inject import csp_hashes, inject, is_html  # noqa: E402
@@ -51,6 +58,10 @@ decisions: dict[str, str] = {}
 # session_key -> {detector: last-counted flag}. A detector's LLR enters the
 # walk once per flag CHANGE (PR 16); this is the change memory.
 last_flags: dict[str, dict[str, object]] = {}
+
+# session_key -> count of requests the proxy answered locally (401/403).
+# Console display only.
+blocks: dict[str, int] = {}
 
 _session_counter = itertools.count(1)
 
@@ -118,15 +129,48 @@ def _add_set_cookie(response, sid: str) -> None:
 
 class CadenceAddon:
     def request(self, flow):
-        """Three responsibilities, in order: telemetry sink, step-up check,
-        provenance gate."""
+        """Responsibilities in order: console, telemetry sink, step-up
+        check, provenance gate."""
         path = flow.request.path.split("?")[0]
+        if path == CONSOLE_PATH:
+            self._serve_console(flow)
+            return
+        if path == CONSOLE_STATE_PATH:
+            self._serve_console_state(flow)
+            return
         if path == TELEMETRY_PATH:
             self._swallow_telemetry(flow)
             return
         if self._maybe_step_up(flow):
+            key = _flow_session_key(flow)
+            blocks[key] = blocks.get(key, 0) + 1
             return
-        self._enforce_provenance(flow)
+        if self._enforce_provenance(flow):
+            key = _flow_session_key(flow)
+            blocks[key] = blocks.get(key, 0) + 1
+            return
+
+    def _serve_console(self, flow):
+        """Serve the demo console page. Proxy-owned path, never forwarded."""
+        from mitmproxy import http
+
+        page = replace_state_path(PAGE, CONSOLE_STATE_PATH)
+        flow.response = http.Response.make(
+            200,
+            page.encode("utf-8"),
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+
+    def _serve_console_state(self, flow):
+        """State snapshot as JSON, same ownership rule as telemetry."""
+        from mitmproxy import http
+
+        payload = snapshot(sys.modules[__name__]).encode("utf-8")
+        flow.response = http.Response.make(
+            200,
+            payload,
+            {"Content-Type": "application/json"},
+        )
 
     def _accumulate(self, key: str, events: list[dict]) -> None:
         """Fold detector verdicts into the SPRT walk — each verdict ONCE.
@@ -251,12 +295,12 @@ class CadenceAddon:
         text (JSON, multipart, unmatched field names, passwords).
         """
         if (flow.request.method or "").upper() != "POST":
-            return
+            return False
         body = flow.request.raw_content or b""
         content_type = flow.request.headers.get("content-type", "")
         events = sessions.get(_flow_session_key(flow), [])
         if post_is_justified(body, content_type, events):
-            return
+            return False
         from mitmproxy import http
 
         flow.response = http.Response.make(
@@ -264,10 +308,21 @@ class CadenceAddon:
             b"cadence: form submission without recorded keystrokes for this session.\n",
             {"Content-Type": "text/plain"},
         )
+        return True
 
     def response(self, flow):
         response = flow.response
         if response is None:
+            return
+        # Proxy-owned paths are answered locally and must NOT get the SDK
+        # injected or a session cookie minted: the console is not a subject
+        # of the measurement, and minting there splits one browser into
+        # two sessions.
+        try:
+            req_path = flow.request.path.split("?")[0]
+        except AttributeError:
+            req_path = ""
+        if req_path.startswith("/__cadence"):
             return
         if not is_html(response.headers.get("content-type", "")):
             return
