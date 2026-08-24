@@ -48,6 +48,10 @@ score: dict[str, float] = {}
 # telemetry ingest and read at request time.
 decisions: dict[str, str] = {}
 
+# session_key -> {detector: last-counted flag}. A detector's LLR enters the
+# walk once per flag CHANGE (PR 16); this is the change memory.
+last_flags: dict[str, dict[str, object]] = {}
+
 _session_counter = itertools.count(1)
 
 
@@ -125,7 +129,15 @@ class CadenceAddon:
         self._enforce_provenance(flow)
 
     def _accumulate(self, key: str, events: list[dict]) -> None:
-        """Fold one telemetry round's detector verdicts into the SPRT walk.
+        """Fold detector verdicts into the SPRT walk — each verdict ONCE.
+
+        A detector's LLR contribution is counted only when its flag CHANGES
+        (None -> True, True -> False, ...). Re-evaluating every flush while
+        the flag stays true double-counts the same session evidence: a
+        machine-like buffer that stays machine-like through ten beacons
+        would add automation's LLR ten times, and the walk would cross the
+        step-up bound on volume of identical evidence, not weight of new
+        evidence. The per-session last-seen flags live in `last_flags`.
 
         Once the walk has said step-up, only a terminal 'clean' decision
         clears it: an intermediate 'continue' after more evidence must not
@@ -137,7 +149,15 @@ class CadenceAddon:
             "drift": (drift_signal(events) or {}).get("drift"),
             "provenance": None,  # per-request, evaluated in the gate below
         }
-        state = update(score.get(key, 0.0), signals)
+        seen = last_flags.setdefault(key, {})
+        fresh = {}
+        for name, fired in signals.items():
+            if name not in seen or seen[name] != fired:
+                fresh[name] = fired
+                seen[name] = fired
+            # Unchanged (or None-before-None) flags contribute nothing:
+            # the walk already holds this evidence once.
+        state = update(score.get(key, 0.0), fresh)
         score[key] = state["llr"]
         if decisions.get(key) == "step-up":
             if state["decision"] != "clean":
