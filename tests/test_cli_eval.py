@@ -67,6 +67,16 @@ def test_replay_result_shapes(tmp_path):
     assert result["time_to_detect_ms"] >= 0
 
 
+def test_sticky_step_up_survives_a_continue_round():
+    """Once step-up, only clean clears. Round 2 has unchanged flags so
+    update() would say continue; the result must stay step-up."""
+    machine = _burst(30, 100.0, 80.0)
+    more = _burst(30, 100.0, 80.0, start=90000.0, seq_offset=100)
+    result = eval_module.replay([machine, more])
+    assert result["history"][0]["decision"] == "step-up"
+    assert result["decision"] == "step-up"
+
+
 def test_human_session_decision_follows_loaded_rates():
     """A single human round banks automation-silent + drift-silent
     evidence. Whether that clears depends entirely on the loaded
