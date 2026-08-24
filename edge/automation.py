@@ -31,6 +31,13 @@ UNIQUE_FRACTION_THRESHOLD = 0.15
 # Fewer character keydowns than this → not enough evidence for any verdict.
 MIN_EVENTS = 10
 
+# Burst-window detection: regularity is scored inside sliding windows of
+# this many intervals, not only over the whole session. A single
+# think-time pause inflates whole-session CV enough to hide an otherwise
+# synthetic stream (tested, documented); a window sliding over the
+# interval series finds the machine-clean stretch between pauses.
+WINDOW = 15
+
 
 def character_keydowns(events: list[dict]) -> list[dict]:
     """Character-producing keydowns in timestamp order.
@@ -61,28 +68,42 @@ def interkey_intervals(events: list[dict]) -> list[float]:
 
 
 def automation_metrics(events: list[dict]) -> dict:
-    """CV and unique-interval fraction, or Nones when under MIN_EVENTS."""
+    """CV and unique-interval fraction, or Nones when under MIN_EVENTS.
+
+    The metrics are the best (most regular) sliding window, not the whole
+    session: burst windows are what catches a machine separated by pauses.
+    `n` stays the whole-session interval count for the data-sufficiency
+    contract.
+    """
     intervals = interkey_intervals(events)
     if len(intervals) < MIN_EVENTS - 1:
         return {"cv": None, "unique_fraction": None, "n": len(intervals)}
-    mean = statistics.mean(intervals)
-    if mean <= 0:
+    best = None
+    for start in range(0, max(1, len(intervals) - WINDOW + 1)):
+        window = intervals[start : start + WINDOW]
+        if len(window) < MIN_EVENTS - 1:
+            break
+        mean = statistics.mean(window)
+        if mean <= 0:
+            continue
+        cv = statistics.pstdev(window) / mean
+        unique_fraction = len(set(window)) / len(window)
+        score = cv + unique_fraction  # lower = more regular
+        if best is None or score < best[0]:
+            best = (score, cv, unique_fraction)
+    if best is None:
         return {"cv": None, "unique_fraction": None, "n": len(intervals)}
-    stdev = statistics.pstdev(intervals)
-    unique = len(set(intervals))
-    return {
-        "cv": stdev / mean,
-        "unique_fraction": unique / len(intervals),
-        "n": len(intervals),
-    }
+    return {"cv": best[1], "unique_fraction": best[2], "n": len(intervals)}
 
 
 def is_automated(events: list[dict]) -> bool | None:
-    """True = machine-like regularity. False = human-like. None = insufficient data.
+    """True = machine-like regularity in ANY window. False = human-like.
+    None = insufficient data.
 
-    True only when BOTH signals are extreme: a fast but jittery human is
-    never flagged on CV alone, and a paused-but-otherwise-synth stream
-    (high unique fraction from think-time gaps) is never flagged on
+    The verdict uses the most-regular sliding window, so a machine whose
+    stream is split by think-time pauses still fires. True requires BOTH
+    signals extreme within that window: a fast but jittery human is never
+    flagged on CV alone, and a quantized-but-varied typist never on
     uniqueness alone.
     """
     m = automation_metrics(events)
