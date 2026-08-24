@@ -74,6 +74,10 @@ def _doctor(args) -> int:
 
     try:
         addon = Path(_addon_path())
+    except (ImportError, OSError) as exc:
+        ok = False
+        print(f"error   cannot resolve the edge package: {exc}")
+    else:
         if addon.is_file():
             print(f"ok      edge/addon.py resolves: {addon}")
         else:
@@ -85,9 +89,6 @@ def _doctor(args) -> int:
         else:
             ok = False
             print(f"error   edge/cadence-sdk.js missing beside the addon: {sdk}")
-    except Exception as exc:
-        ok = False
-        print(f"error   cannot resolve the edge package: {exc}")
 
     try:
         sys.path.insert(0, str(Path(_addon_path()).resolve().parent))
@@ -95,15 +96,22 @@ def _doctor(args) -> int:
 
         from provenance import SESSION_COOKIE  # noqa: E402
 
-        if SESSION_COOKIE == "__cadence_sid" and addon_module.TELEMETRY_PATH == "/__cadence/telemetry":
+        # Constants are imported and checked for agreement, not hardcoded:
+        # the cookie name the addon mints must be the one provenance reads,
+        # and neither may be empty. Renames are allowed; splits are not.
+        if (
+            SESSION_COOKIE
+            and getattr(addon_module, "TELEMETRY_PATH", "")
+            and addon_module.SESSION_COOKIE == SESSION_COOKIE
+        ):
             print(f"ok      session cookie + telemetry path: {SESSION_COOKIE} / {addon_module.TELEMETRY_PATH}")
         else:
             ok = False
             print(
-                f"error   unexpected wiring: cookie={SESSION_COOKIE} "
-                f"path={addon_module.TELEMETRY_PATH}"
+                f"error   wiring split: provenance cookie={SESSION_COOKIE!r} "
+                f"addon cookie={getattr(addon_module, 'SESSION_COOKIE', None)!r}"
             )
-    except Exception as exc:
+    except (ImportError, OSError) as exc:
         ok = False
         print(f"error   addon import failed: {exc}")
 
