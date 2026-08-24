@@ -14,7 +14,7 @@ EDGE = REPO / "edge"
 
 sys.path.insert(0, str(EDGE))
 
-from console import CONSOLE_PATH, PAGE, replace_ws_path, snapshot  # noqa: E402
+from console import CONSOLE_PATH, CONSOLE_STATE_PATH, PAGE, snapshot  # noqa: E402
 
 
 class _Headers(dict):
@@ -80,8 +80,8 @@ def test_console_page_is_served_locally(monkeypatch):
     assert flow.response.status_code == 200
     body = flow.response.content.decode("utf-8")
     assert "cadence console" in body
-    assert "WebSocket" in body
-    assert "/__cadence/console/ws" in body  # WS path substituted
+    assert "fetch" in body
+    assert CONSOLE_STATE_PATH in body  # state path substituted
 
 
 def test_snapshot_reports_decision_flags_and_blocks():
@@ -135,6 +135,40 @@ def test_blocked_requests_increment_the_counter(monkeypatch):
     assert flow.response is not None
     assert flow.response.status_code == 403
     assert addon.blocks.get("live1") == 1
+
+
+def test_state_endpoint_returns_json(monkeypatch):
+    addon = _load_addon()
+    addon.sessions.clear(); addon.blocks.clear()
+    addon.decisions.clear(); addon.score.clear(); addon.last_flags.clear()
+    _fake_mitmproxy(monkeypatch)
+
+    addon.addons[0]._accumulate("live1", [])
+    flow = _Flow(CONSOLE_STATE_PATH)
+    addon.addons[0].request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 200
+    data = json.loads(flow.response.content)
+    assert "sessions" in data and "dropped" in data
+
+
+def test_console_page_is_not_instrumented(monkeypatch):
+    """The console is HTML served by the proxy itself - the response hook
+    must not inject the SDK or mint a cookie on /__cadence/* paths."""
+    addon = _load_addon()
+
+    class _Resp:
+        def __init__(self):
+            self.content = b"<html><body></body></html>"
+            from collections import OrderedDict
+            self.headers = _Headers({"Content-Type": "text/html"})
+
+    flow = _Flow(CONSOLE_PATH)
+    flow.response = _Resp()
+    addon.addons[0].response(flow)
+    assert b'id="cadence-sdk"' not in flow.response.content
+    assert flow.response.headers.get("Set-Cookie") is None
 
 
 def test_page_contains_no_detectors():

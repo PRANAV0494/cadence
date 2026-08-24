@@ -1,9 +1,10 @@
-"""Live console: a demo page over WebSocket showing proxy state.
+"""Live console: a demo page showing proxy state, polled over HTTP.
 
 Served by the addon itself at /__cadence/console — the proxy owns the
-path, nothing is forwarded. The page opens a WebSocket to
-/__cadence/console/ws; on each message it renders session id, last SPRT
-decision, per-detector flags, and any 401/403 the proxy has issued.
+path, nothing is forwarded. State comes from GET /__cadence/console/state
+(JSON, same ownership rule as telemetry); the page fetches it every
+second and renders session id, last SPRT decision, per-detector flags,
+and any 401/403 the proxy has issued.
 
 Demo only: no detector logic lives here and none is added.
 """
@@ -13,7 +14,7 @@ from __future__ import annotations
 import json
 
 CONSOLE_PATH = "/__cadence/console"
-CONSOLE_WS_PATH = "/__cadence/console/ws"
+CONSOLE_STATE_PATH = "/__cadence/console/state"
 
 PAGE = """<!doctype html>
 <html>
@@ -28,7 +29,7 @@ PAGE = """<!doctype html>
 </style></head>
 <body>
 <h1>cadence console (demo)</h1>
-<div id="conn">connecting...</div>
+<div id="conn">loading...</div>
 <table><thead>
 <tr><th>session</th><th>decision</th><th>score</th><th>automation</th><th>drift</th><th>provenance</th><th>blocks</th></tr>
 </thead><tbody id="rows"></tbody></table>
@@ -56,23 +57,26 @@ function render(state) {
   document.getElementById("conn").textContent =
     state.dropped + " blocked request(s) — live";
 }
-function connect() {
-  var ws = new WebSocket(
-    (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "%WS_PATH%"
-  );
-  ws.onmessage = function (m) { render(JSON.parse(m.data)); };
-  ws.onclose = function () {
-    document.getElementById("conn").textContent = "reconnecting...";
-    setTimeout(connect, 1500);
-  };
+function poll() {
+  fetch("%STATE_PATH%")
+    .then(function (r) { return r.json(); })
+    .then(function (state) {
+      render(state);
+      document.getElementById("conn").textContent =
+        state.dropped + " blocked request(s) — live, 1s poll";
+    })
+    .catch(function () {
+      document.getElementById("conn").textContent = "fetch failed; retrying...";
+    });
+  setTimeout(poll, 1000);
 }
-connect();
+poll();
 </script>
 </body></html>"""
 
 
-def replace_ws_path(page: str, ws_path: str) -> str:
-    return page.replace("%WS_PATH%", ws_path)
+def replace_state_path(page: str, state_path: str) -> str:
+    return page.replace("%STATE_PATH%", state_path)
 
 
 def snapshot(state) -> str:

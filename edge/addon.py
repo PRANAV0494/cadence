@@ -19,9 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from automation import is_automated  # noqa: E402
 from console import (  # noqa: E402
     CONSOLE_PATH,
-    CONSOLE_WS_PATH,
+    CONSOLE_STATE_PATH,
     PAGE,
-    replace_ws_path,
+    replace_state_path,
     snapshot,
 )
 from drift import drift_signal  # noqa: E402
@@ -135,6 +135,9 @@ class CadenceAddon:
         if path == CONSOLE_PATH:
             self._serve_console(flow)
             return
+        if path == CONSOLE_STATE_PATH:
+            self._serve_console_state(flow)
+            return
         if path == TELEMETRY_PATH:
             self._swallow_telemetry(flow)
             return
@@ -151,11 +154,22 @@ class CadenceAddon:
         """Serve the demo console page. Proxy-owned path, never forwarded."""
         from mitmproxy import http
 
-        page = replace_ws_path(PAGE, CONSOLE_WS_PATH)
+        page = replace_state_path(PAGE, CONSOLE_STATE_PATH)
         flow.response = http.Response.make(
             200,
             page.encode("utf-8"),
             {"Content-Type": "text/html; charset=utf-8"},
+        )
+
+    def _serve_console_state(self, flow):
+        """State snapshot as JSON, same ownership rule as telemetry."""
+        from mitmproxy import http
+
+        payload = snapshot(sys.modules[__name__]).encode("utf-8")
+        flow.response = http.Response.make(
+            200,
+            payload,
+            {"Content-Type": "application/json"},
         )
 
     def _accumulate(self, key: str, events: list[dict]) -> None:
@@ -300,6 +314,12 @@ class CadenceAddon:
         response = flow.response
         if response is None:
             return
+        # Proxy-owned paths are answered locally and must NOT get the SDK
+        # injected or a session cookie minted: the console is not a subject
+        # of the measurement, and minting there splits one browser into
+        # two sessions.
+        if flow.request.path.split("?")[0].startswith("/__cadence"):
+            return
         if not is_html(response.headers.get("content-type", "")):
             return
         body = response.content or b""
@@ -353,30 +373,6 @@ class CadenceAddon:
             return
         directives[target] = existing.rstrip() + " " + " ".join(additions)
         response.headers["Content-Security-Policy"] = "; ".join(directives)
-
-
-    def websocket_start(self, flow):
-        """The console page's WS: answer locally, push state immediately."""
-        if flow.request.path.split("?")[0] != CONSOLE_WS_PATH:
-            return
-        import mitmproxy.ctx as ctx
-
-        self._ws_push(flow)
-
-    def websocket_message(self, flow):
-        """Console ping: push the current snapshot back down the same WS."""
-        if flow.request.path.split("?")[0] != CONSOLE_WS_PATH:
-            return
-        self._ws_push(flow)
-
-    def _ws_push(self, flow):
-        import mitmproxy.ctx as ctx
-        from mitmproxy import websocket
-
-        msg = snapshot(sys.modules[__name__])
-        ctx.master.commands.call(
-            "websocket.broadcast", flow, msg.encode("utf-8")
-        )
 
 
 addons = [CadenceAddon()]
