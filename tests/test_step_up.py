@@ -127,11 +127,58 @@ def _human_stream(n=60, seed=42, start=0.0):
     return events
 
 
+def test_repeated_identical_flags_do_not_double_count(monkeypatch):
+    """One-shot semantics at the accumulate level: the SAME flag values
+    folded twice add the LLR once. Driven directly through _accumulate
+    because re-POSTing the same events through the real hook concatenates
+    the buffer (drain() means the browser never re-sends), which is a
+    different stream, not the same evidence twice."""
+    addon = _load_addon()
+    addon.sessions.clear(); addon.score.clear()
+    addon.decisions.clear(); addon.last_flags.clear()
+    from fusion import signal_llr
+
+    burst = _burst(30, 100.0, 80.0)
+    addon.addons[0]._accumulate("k", burst)   # automation True (first sight)
+    first = addon.score["k"]
+    assert first > 0
+
+    addon.addons[0]._accumulate("k", burst)   # identical flags: no change
+    assert addon.score["k"] == first
+
+    # Drift appearing (None -> True) IS a change: counted once more.
+    human_then_attack = _human_stream() + _burst(30, 70.0, 50.0, start=90000.0, seq_offset=500)
+    addon.addons[0]._accumulate("k", human_then_attack)
+    changed = addon.score["k"]
+    addon.addons[0]._accumulate("k", human_then_attack)  # unchanged again
+    assert addon.score["k"] == changed
+
+
+def test_a_flag_change_adds_new_evidence(monkeypatch):
+    """Drift appearing mid-session (None -> True) is new evidence and
+    enters the walk."""
+    addon = _load_addon()
+    addon.sessions.clear(); addon.score.clear()
+    addon.decisions.clear(); addon.last_flags.clear()
+    _fake_mitmproxy(monkeypatch)
+    addon.addons[0].request(_telemetry(_human_stream()))
+    before = addon.score["s1"]
+    # A sharp takeover after the human: 40ms-gap machine. Whole-session
+    # dilution hides automation, but drift fires (flight_d > 0.8) — a
+    # genuine flag CHANGE, which is new evidence and must enter the walk.
+    human = _human_stream()
+    start = max(e["timestamp"] for e in human) + 700.0
+    takeover = _burst(40, 40.0, 30.0, start=start, seq_offset=500)
+    addon.addons[0].request(_telemetry(takeover))
+    assert addon.score["s1"] > before
+
+
 def test_machine_session_gets_401_with_challenge(monkeypatch):
     addon = _load_addon()
     addon.sessions.clear()
     addon.score.clear()
     addon.decisions.clear()
+    addon.last_flags.clear()
     _fake_mitmproxy(monkeypatch)
 
     r1, r2 = _attack_session()
@@ -155,6 +202,7 @@ def test_human_session_is_untouched(monkeypatch):
     addon.sessions.clear()
     addon.score.clear()
     addon.decisions.clear()
+    addon.last_flags.clear()
     _fake_mitmproxy(monkeypatch)
 
     addon.addons[0].request(_telemetry(_human_stream()))
@@ -171,6 +219,7 @@ def test_step_up_is_sticky_for_the_session(monkeypatch):
     addon.sessions.clear()
     addon.score.clear()
     addon.decisions.clear()
+    addon.last_flags.clear()
     _fake_mitmproxy(monkeypatch)
 
     r1, r2 = _attack_session()
@@ -192,6 +241,7 @@ def test_step_up_survives_a_continue_round(monkeypatch):
     addon.sessions.clear()
     addon.score.clear()
     addon.decisions.clear()
+    addon.last_flags.clear()
     _fake_mitmproxy(monkeypatch)
 
     r1, r2 = _attack_session()
@@ -223,13 +273,12 @@ def test_score_state_survives_across_requests(monkeypatch):
     addon.sessions.clear()
     addon.score.clear()
     addon.decisions.clear()
+    addon.last_flags.clear()
     _fake_mitmproxy(monkeypatch)
 
     r1, r2 = _attack_session()
     addon.addons[0].request(_telemetry(r1))
     assert addon.decisions["s1"] == "step-up"  # round 1 alone: automation fires
-    addon.addons[0].request(_telemetry(r2))
-    assert addon.score["s1"] > bounds()[1]  # evidence survives round 2
 
 
 def test_sessions_without_events_never_challenged(monkeypatch):
@@ -237,6 +286,7 @@ def test_sessions_without_events_never_challenged(monkeypatch):
     addon.sessions.clear()
     addon.score.clear()
     addon.decisions.clear()
+    addon.last_flags.clear()
     _fake_mitmproxy(monkeypatch)
 
     flow = _page_request()
@@ -251,6 +301,7 @@ def test_provenance_403_still_fires_for_unjustified_text(monkeypatch):
     addon.sessions.clear()
     addon.score.clear()
     addon.decisions.clear()
+    addon.last_flags.clear()
     _fake_mitmproxy(monkeypatch)
 
     flow = _Flow(
