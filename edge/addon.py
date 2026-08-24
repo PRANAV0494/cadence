@@ -318,7 +318,11 @@ class CadenceAddon:
         # injected or a session cookie minted: the console is not a subject
         # of the measurement, and minting there splits one browser into
         # two sessions.
-        if flow.request.path.split("?")[0].startswith("/__cadence"):
+        try:
+            req_path = flow.request.path.split("?")[0]
+        except AttributeError:
+            req_path = ""
+        if req_path.startswith("/__cadence"):
             return
         if not is_html(response.headers.get("content-type", "")):
             return
