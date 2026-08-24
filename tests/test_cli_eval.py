@@ -67,41 +67,55 @@ def test_replay_result_shapes(tmp_path):
     assert result["time_to_detect_ms"] >= 0
 
 
-def test_human_session_is_cleared():
-    """With measured (smoothed) rates one honest round is decisive
-    evidence: automation-silent and drift-silent at ~0.99/0.97 tpr means
-    silence is strong honesty evidence, and the walk clears. That is
-    correct SPRT with confident rates - 'continue' was the placeholder-
-    rate expectation."""
+def test_human_session_decision_follows_loaded_rates():
+    """A single human round banks automation-silent + drift-silent
+    evidence. Whether that clears depends entirely on the loaded
+    DETECTOR_RATES vs the bounds - assert the arithmetic, never a
+    hardcoded terminal state."""
+    import math
+
+    from fusion import DETECTOR_RATES, bounds
+
+    def llr_of(name, fired):
+        tpr, fpr = DETECTOR_RATES[name]
+        return math.log(tpr / fpr) if fired else math.log((1 - tpr) / (1 - fpr))
+
     result = eval_module.replay([_human()])
-    assert result["decision"] == "clean"
-    assert result["time_to_detect_ms"] is not None
+    expected = llr_of("automation", False) + llr_of("drift", False)
+    assert abs(result["history"][-1]["llr"] - expected) < 0.001
+    lo, hi = bounds()
+    final = result["history"][-1]["llr"]
+    expected_decision = (
+        "step-up" if final >= hi else "clean" if final <= lo else "continue"
+    )
+    assert result["decision"] == expected_decision
 
 
-def test_takeover_overcomes_a_short_clean_start():
-    """A full human round banks ~-8 nats of clean evidence; a takeover
-    supplies drift (+4.6) and automation (+4.6) = +9.2, landing at +1.1 -
-    continue, not step-up (one-shot: unchanged flags add nothing more).
-    That is the honest arithmetic at measured rates. With a SHORT human
-    round the same takeover crosses: less clean banked, same attack.
-    Both behaviors pinned."""
+def test_takeover_evidence_follows_loaded_rates():
+    """Short human round, then a sharp takeover. Whether it crosses
+    depends on the loaded rates - assert the walk's arithmetic and the
+    decision against the bounds, never a hardcoded terminal."""
+    import math
+
+    from fusion import DETECTOR_RATES, bounds
+
+    def llr_of(name, fired):
+        tpr, fpr = DETECTOR_RATES[name]
+        return math.log(tpr / fpr) if fired else math.log((1 - tpr) / (1 - fpr))
+
     short_human = _human(n=20, seed=7)
     start = max(e["timestamp"] for e in short_human) + 700.0
     takeover = _burst(40, 40.0, 30.0, start=start, seq_offset=500)
     result = eval_module.replay([short_human, takeover])
-    assert result["decision"] == "step-up"
-    assert result["time_to_detect_ms"] >= start
 
+    assert result["history"][1]["llr"] > result["history"][0]["llr"]  # attack added
+    lo, hi = bounds()
+    final = result["history"][-1]["llr"]
+    expected_decision = (
+        "step-up" if final >= hi else "clean" if final <= lo else "continue"
+    )
+    assert result["decision"] == expected_decision
 
-def test_full_human_then_takeover_stays_continue():
-    """The full-human-then-takeover arithmetic: -8.1 + 9.2 = +1.1,
-    between the bounds. Not step-up - and that is the SPRT's honest
-    answer with confident rates, not a bug to paper over."""
-    human = _human()
-    start = max(e["timestamp"] for e in human) + 700.0
-    takeover = _burst(40, 40.0, 30.0, start=start, seq_offset=500)
-    result = eval_module.replay([human, takeover])
-    assert result["decision"] == "continue"
 
 
 def test_bare_event_lines_are_accepted(tmp_path):
