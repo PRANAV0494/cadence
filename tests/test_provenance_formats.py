@@ -96,6 +96,14 @@ def test_multipart_value_whitespace_is_preserved():
     assert text_fields_in_body(body, MULTI) == {"message": "  spaced text  "}
 
 
+def test_boundary_parameter_is_case_insensitive():
+    """RFC 2046: Boundary=B is as legal as boundary=B."""
+    body = _multipart(("message", "hello world", None))
+    assert text_fields_in_body(body, "multipart/form-data; Boundary=B") == {
+        "message": "hello world"
+    }
+
+
 def test_malformed_multipart_fails_open():
     assert text_fields_in_body(b"garbage no boundary parts", MULTI) == {}
     assert text_fields_in_body(b"--B", "multipart/form-data") == {}  # no boundary param

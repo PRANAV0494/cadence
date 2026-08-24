@@ -177,9 +177,8 @@ def _multipart_fields(body: bytes, content_type: str | None) -> dict[str, str]:
     checked. Minimal boundary-split parsing, fail-open on malformed
     parts.
     """
-    import re as _re
-
-    match = _re.search(r'boundary="?([^";]+)"?', content_type or "")
+    # RFC 2046: parameter names are case-insensitive; Boundary=B is legal.
+    match = re.search(r'boundary="?([^";]+)"?', content_type or "", re.IGNORECASE)
     if not match:
         return {}
     boundary = match.group(1).encode()
@@ -198,7 +197,7 @@ def _multipart_fields(body: bytes, content_type: str | None) -> dict[str, str]:
         header_blob, _, value_blob = part.partition(header_sep)
         if not value_blob:
             continue
-        name_match = _re.search(rb'name="([^"]+)"', header_blob)
+        name_match = re.search(rb'name="([^"]+)"', header_blob)
         if not name_match:
             continue
         name = name_match.group(1).decode("utf-8", errors="replace")
