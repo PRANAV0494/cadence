@@ -32,7 +32,7 @@ def _addon_path() -> str:
 def _proxy(args) -> None:
     try:
         addon = _addon_path()
-    except Exception:
+    except (ImportError, OSError):
         sys.exit("cadence: proxy addon missing — install the package (pip install .) or run from the repo")
     mitmdump = shutil.which("mitmdump")
     if not mitmdump:
