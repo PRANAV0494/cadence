@@ -106,34 +106,33 @@ def test_backspaces_are_excluded_from_intervals():
     assert all(t not in ts for t in [e["timestamp"] for e in backspaces])
 
 
-def test_one_pause_makes_a_machine_look_human_on_cv():
-    """A single 500 ms think-gap against 100 ms intervals drives CV to ~0.6,
-    indistinguishable from human jitter — and that is the correct,
-    conservative behaviour. CV measures dispersion; one big gap IS dispersion.
-    Sustained regularity, not one clean stretch, is what flags a machine."""
+def test_one_pause_no_longer_hides_a_machine():
+    """[PR 18] A single 500 ms think-gap against 100 ms intervals used to
+    drive whole-session CV to ~0.6 and hide the machine. Sliding windows
+    score the clean stretch between pauses: the burst fires."""
     stream = synthetic_stream()
     for e in stream[30:]:
         e["timestamp"] += 500.0
-    assert is_automated(stream) is False
-    assert automation_metrics(stream)["unique_fraction"] < 0.05  # still machine-unique
+    assert is_automated(stream) is True
 
 
-def test_two_regular_bursts_separated_by_a_pause_both_flag():
-    """Two clean 30-key bursts with one gap between them: the pause inflates
-    whole-stream CV, so whole-stream detection misses it. The detector is
-    honest about this limit — documented behaviour, tested as such."""
+def test_two_regular_bursts_separated_by_a_pause_now_flag():
+    """[PR 18] Two clean 30-key bursts with one long gap: whole-stream CV
+    was dominated by the gap; the window inside either burst is regular,
+    so the stream fires."""
     burst1 = synthetic_stream(n=30, gap=100.0)
+    offset = burst1[-1]["timestamp"] if burst1 else 0
     burst2 = synthetic_stream(n=30, gap=100.0)
     for e in burst2:
-        e["timestamp"] += 3000.0 + (burst1[-1]["timestamp"] if burst1 else 0)
-    assert is_automated(burst1 + burst2) is False  # CV dominated by the gap
+        e["timestamp"] += 3000.0 + offset
+    assert is_automated(burst1 + burst2) is True
 
 
 def test_metrics_shape():
     m = automation_metrics(synthetic_stream())
-    assert m["n"] == 59
-    assert m["cv"] < 0.01
-    assert m["unique_fraction"] < 0.05
+    assert m["n"] == 59  # whole-session interval count, for data sufficiency
+    assert m["cv"] < 0.01  # best window: the whole stream is one clean burst
+    assert m["unique_fraction"] < 0.10  # 1 distinct gap in a 15-interval window
 
 
 def test_constants_are_conservative():
