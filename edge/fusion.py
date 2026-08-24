@@ -35,19 +35,74 @@ import math
 ALPHA = 0.05
 BETA = 0.10
 
-# PLACEHOLDER detector reliabilities: (true positive rate, false positive
-# rate). These are engineering estimates, NOT measurements - no labelled
-# run has produced them, and nothing in evaluation/results.json backs
-# them. They set the per-signal evidence weight; wrong numbers make the
-# walk over- or under-eager. Replacing them with rates measured on a real
-# labelled corpus is required before any deployment claim. This comment
-# says placeholder because an earlier draft claimed 'measured' - exactly
-# the class of unsupported claim this repository's CI exists to catch.
-DETECTOR_RATES = {
-    "automation": (0.90, 0.02),   # synthetic streams: flags 90%, humans 2%
-    "drift": (0.70, 0.05),        # driver changes: 70%, same-typist: 5%
-    "provenance": (0.85, 0.01),   # unjustified POSTs: 85%, justified: 1%
+# Fallback rates when evaluation/results.json cannot be loaded (stripped
+# installs). Engineering estimates, NOT measurements - the loader says
+# so on stderr when it falls back here. Replaces a comment that claimed
+# these were 'measured CMU-era numbers'; they were not, and this
+# repository's CI exists to catch exactly that claim.
+FALLBACK_RATES = {
+    "automation": (0.90, 0.02),
+    "drift": (0.70, 0.05),
+    "provenance": (0.85, 0.01),
 }
+
+
+def _load_rates() -> dict[str, tuple[float, float]]:
+    """Detector rates from evaluation/results.json - measured by
+    evaluation/calibrate_detectors.py on a fixed-seed labelled fixture.
+
+    The fixture is easy and pause-free (whole-session detector on this
+    base); field rates will be worse, and results.json says so. Fallbacks
+    apply per-detector, loudly - never silently, never wiping a
+    loadable detector's rate because another is absent. Provenance has
+    no fixture yet and keeps a placeholder by design.
+    """
+    import json as _json
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    def _smooth(rate: dict, n_key: str) -> float:
+        """Jeffreys smoothing: (fired + 0.5) / (n + 1). Perfect fixture
+        rates make the LLR degenerate (log(0)); smoothing keeps the open
+        interval, weighted by the measured sample size."""
+        fired = rate["value"] * rate[n_key]
+        n = rate[n_key]
+        return (fired + 0.5) / (n + 1.0)
+
+    rates = {"provenance": FALLBACK_RATES["provenance"]}
+    try:
+        data = _json.loads(
+            (_Path(__file__).resolve().parents[1] / "evaluation" / "results.json")
+            .read_text(encoding="utf-8")
+        )["results"]
+    except (OSError, ValueError) as exc:
+        print(
+            f"cadence: evaluation/results.json not loadable ({exc}); fusion "
+            "is running on PLACEHOLDER rates - measurements are not in effect",
+            file=_sys.stderr,
+        )
+        return dict(FALLBACK_RATES)
+
+    for detector, tpr_key, fpr_key in (
+        ("automation", "detector_automation_tpr", "detector_automation_fpr"),
+        ("drift", "detector_drift_tpr", "detector_drift_fpr"),
+    ):
+        try:
+            rates[detector] = (
+                _smooth(data[tpr_key], "n_streams"),
+                _smooth(data[fpr_key], "n_streams"),
+            )
+        except KeyError:
+            print(
+                f"cadence: {tpr_key} missing from results.json; using "
+                f"placeholder rates for {detector}",
+                file=_sys.stderr,
+            )
+            rates[detector] = FALLBACK_RATES[detector]
+    return rates
+
+
+DETECTOR_RATES = _load_rates()
 
 
 def bounds(alpha: float = ALPHA, beta: float = BETA) -> tuple[float, float]:
