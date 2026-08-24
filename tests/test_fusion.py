@@ -84,12 +84,21 @@ def test_single_automation_flag_is_terminal():
     assert r["decision"] == "step-up"
 
 
-def test_single_drift_flag_alone_is_not_terminal():
-    """Drift is the noisiest detector (tpr 0.70/fpr 0.05): one flag is
-    ~2.6 nats, below the 2.89 bar — the walk continues."""
+def test_drift_flag_terminality_follows_the_measured_rates():
+    """With placeholder rates (tpr 0.70/fpr 0.05) one drift flag was 2.6
+    nats — below the bar. The measured fixture rates are near-perfect
+    (smoothed tpr 0.97/fpr 0.0098), so one flag is ln(99) ~ 4.6 nats and
+    IS terminal. That is the honest consequence of an easy fixture: the
+    rates carry the fixture's confidence, and recalibrating on harder
+    data will walk this back. What must hold either way: the LLR is
+    finite and the decision follows the bound."""
     r = update(0.0, {"drift": True})
-    assert r["decision"] == "continue"
-    assert 0 < r["llr"] < r["upper"]
+    assert r["llr"] > 0
+    tpr, fpr = DETECTOR_RATES["drift"]
+    import math as _m
+    expected = _m.log(tpr / fpr)
+    assert abs(r["llr"] - expected) < 1e-9
+    assert r["decision"] == ("step-up" if expected >= r["upper"] else "continue")
 
 
 def test_repeated_attack_evidence_steps_up():
@@ -115,9 +124,18 @@ def test_repeated_clean_evidence_declares_clean():
 
 
 def test_mixed_evidence_can_cancel():
-    """An automation flag partially offset by clean provenance and drift."""
+    """An automation flag offset by clean provenance and drift can land
+    anywhere relative to the bounds - what must hold is the arithmetic:
+    the sum of the individual LLRs, nothing more, nothing less."""
+    import math as _m
+
     r = update(0.0, {"automation": True, "drift": False, "provenance": False})
-    assert r["llr"] > 0 and r["decision"] == "continue"
+    expected = sum(
+        _m.log((1 - DETECTOR_RATES[n][0]) / (1 - DETECTOR_RATES[n][1]))
+        if not fired else _m.log(DETECTOR_RATES[n][0] / DETECTOR_RATES[n][1])
+        for n, fired in (("automation", True), ("drift", False), ("provenance", False))
+    )
+    assert abs(r["llr"] - expected) < 1e-9
 
 
 def test_unknown_detector_is_ignored():
@@ -132,13 +150,64 @@ def test_none_contributes_zero():
 
 # ── decision function ──────────────────────────────────────────
 
-def test_rates_are_declared_placeholders():
-    """The rates are engineering estimates until a labelled run replaces
-    them; the module must say so - an earlier comment claimed 'measured'
-    and this repo fails CI for that class of claim."""
+def test_rates_come_from_results_json():
+    """[PR 21] The automation/drift rates are loaded from
+    evaluation/results.json, measured by calibrate_detectors.py - not
+    hardcoded opinions. Values must match the file exactly."""
+    import json
+
     import fusion
 
-    assert "PLACEHOLDER" in Path(fusion.__file__).read_text(encoding="utf-8")
+    data = json.loads(
+        (Path(fusion.__file__).resolve().parents[1] / "evaluation" / "results.json")
+        .read_text(encoding="utf-8")
+    )["results"]
+    def _smooth(entry):
+        return (entry["value"] * entry["n_streams"] + 0.5) / (entry["n_streams"] + 1.0)
+
+    assert fusion.DETECTOR_RATES["automation"] == (
+        _smooth(data["detector_automation_tpr"]),
+        _smooth(data["detector_automation_fpr"]),
+    )
+    assert fusion.DETECTOR_RATES["drift"] == (
+        _smooth(data["detector_drift_tpr"]),
+        _smooth(data["detector_drift_fpr"]),
+    )
+
+
+def test_measured_rates_have_provenance():
+    """Every measured rate entry carries n and a repo source."""
+    import json
+
+    import fusion
+
+    data = json.loads(
+        (Path(fusion.__file__).resolve().parents[1] / "evaluation" / "results.json")
+        .read_text(encoding="utf-8")
+    )["results"]
+    for key in ("detector_automation_tpr", "detector_automation_fpr",
+                "detector_drift_tpr", "detector_drift_fpr"):
+        entry = data[key]
+        assert entry.get("n_streams", 0) > 0, key
+        assert "calibrate_detectors.py" in entry["source"], key
+
+
+def test_results_json_matches_the_calibration_script():
+    """results.json's detector entries are exactly what measure() produced -
+    pins the file to the script so a stale file cannot survive quietly."""
+    import json
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "evaluation"))
+    from calibrate_detectors import measure, results_entries
+
+    data = json.loads(
+        (Path(__file__).resolve().parents[1] / "evaluation" / "results.json")
+        .read_text(encoding="utf-8")
+    )["results"]
+    entries = results_entries(measure())
+    for key, entry in entries.items():
+        assert data[key]["value"] == entry["value"], key
 
 
 def test_decide_at_and_past_bounds():

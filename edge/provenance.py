@@ -133,13 +133,7 @@ def typed_string(events: list[dict]) -> str:
     return "".join(chars)
 
 
-def text_fields_in_body(body: bytes, content_type: str | None) -> dict[str, str]:
-    """Name -> first value for text-bearing fields in a urlencoded body."""
-    if not body:
-        return {}
-    ct = (content_type or "").lower()
-    if "application/x-www-form-urlencoded" not in ct:
-        return {}
+def _urlencoded_fields(body: bytes) -> dict[str, str]:
     try:
         fields = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
     except ValueError:
@@ -150,6 +144,96 @@ def text_fields_in_body(body: bytes, content_type: str | None) -> dict[str, str]
         for values in [fields.get(name, [])]
         if values
     }
+
+
+def _json_fields(body: bytes) -> dict[str, str]:
+    """Text-bearing top-level string fields of a JSON body.
+
+    Nested objects are not traversed: the top level is where APIs put
+    the human text this gate is about. Non-string values are skipped.
+    Any parse failure fails open ({}).
+    """
+    import json as _json
+
+    try:
+        data = _json.loads(body.decode("utf-8", errors="replace"))
+    except (ValueError, UnicodeDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        name: value
+        for name, value in data.items()
+        if name in TEXT_FIELDS and isinstance(value, str) and value
+    }
+
+
+def _multipart_fields(body: bytes, content_type: str | None) -> dict[str, str]:
+    """Text parts of a multipart/form-data body, by part name.
+
+    File parts fail open by design: an uploaded binary is never typed
+    text, and filenames are chosen from menus as often as typed. Only a
+    part whose name is text-bearing AND whose content looks textual is
+    checked. Minimal boundary-split parsing, fail-open on malformed
+    parts.
+    """
+    # RFC 2046: parameter names are case-insensitive; Boundary=B is legal.
+    match = re.search(r'boundary="?([^";]+)"?', content_type or "", re.IGNORECASE)
+    if not match:
+        return {}
+    boundary = match.group(1).encode()
+    sep = b"\r\n"
+    header_sep = b"\r\n\r\n"
+    fields: dict[str, str] = {}
+    for part in body.split(b"--" + boundary):
+        # Parts arrive as: b"\r\n<headers>\r\n\r\n<value>". Strip ONLY the
+        # exact leading/trailing CRLF — bytes.strip() would eat whitespace
+        # inside the value itself, corrupting the text under check.
+        if part.startswith(sep):
+            part = part[len(sep):]
+        part = part.rstrip(sep)
+        if not part or part == b"--":
+            continue
+        header_blob, _, value_blob = part.partition(header_sep)
+        if not value_blob:
+            continue
+        name_match = re.search(rb'name="([^"]+)"', header_blob)
+        if not name_match:
+            continue
+        name = name_match.group(1).decode("utf-8", errors="replace")
+        is_file = b"filename=" in header_blob
+        ct_lines = [
+            line for line in header_blob.split(sep)
+            if line.lower().startswith(b"content-type:")
+        ]
+        declared = ct_lines[0].split(b":", 1)[1].strip().lower() if ct_lines else b""
+        text_like = (
+            not is_file
+            and (b"text/" in declared or declared in (b"", b"text/plain"))
+        )
+        if name in TEXT_FIELDS and text_like:
+            fields[name] = value_blob.decode("utf-8", errors="replace")
+    return fields
+
+
+def text_fields_in_body(body: bytes, content_type: str | None) -> dict[str, str]:
+    """Name -> first value for text-bearing fields, across body formats.
+
+    urlencoded, JSON (top-level string fields), and multipart text parts
+    share the same substring rule downstream. Files, binaries, and
+    anything unparseable contribute nothing: the gate fails open for
+    what it cannot read as typed text.
+    """
+    if not body:
+        return {}
+    ct = (content_type or "").lower()
+    if "application/x-www-form-urlencoded" in ct:
+        return _urlencoded_fields(body)
+    if "application/json" in ct:
+        return _json_fields(body)
+    if "multipart/form-data" in ct:
+        return _multipart_fields(body, content_type)
+    return {}
 
 
 def post_is_justified(body: bytes, content_type: str | None, events: list[dict]) -> bool:
