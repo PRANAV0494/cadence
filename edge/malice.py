@@ -32,8 +32,7 @@ PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
      re.compile(
          r"<\s*script\b"
          r"|on(?:error|load|click|mouseover)\s*="
-         r"|javascript\s*:"
-         r"|<\s*img\b[^>]*\bsrc\b",
+         r"|javascript\s*:",
          re.IGNORECASE,
      )),
     ("traversal",
@@ -67,10 +66,8 @@ def suspicious(url: str, body: bytes | None = None) -> str | None:
     """
     text = url or ""
     if body:
-        try:
-            text += " " + body.decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        # errors="replace" cannot raise; no blanket except.
+        text += " " + body.decode("utf-8", errors="replace")
     for name, pattern in PATTERNS:
         if pattern.search(text):
             return name

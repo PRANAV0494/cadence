@@ -36,6 +36,12 @@ def test_xss_onerror():
     assert suspicious("/comment?text=<img src=x onerror=alert(1)>") == "xss"
 
 
+def test_plain_img_tag_is_not_xss():
+    """An image tag with a plain src is ordinary HTML; only the event
+    handlers and script/javascript vectors carry XSS."""
+    assert suspicious("/x", b"<img src=/logo.png>") is None
+
+
 def test_traversal_etc_passwd():
     assert suspicious("/download?f=../../etc/passwd") == "traversal"
 
@@ -59,15 +65,15 @@ def test_benign_body_words_do_not_fire():
 
 
 def test_headers_are_out_of_scope():
-    """The detector takes URL and body only. Accept: */* is a browser
-    default, not an attacker signature — it must never reach the patterns,
-    and the function signature has no header parameter at all."""
+    """Accept: */* is a browser default, not an attacker signature. The
+    historical bug was a pattern matching * inside the scanned string —
+    so put the wildcard IN the scanned strings and require None."""
     import inspect
 
     params = list(inspect.signature(suspicious).parameters)
     assert params == ["url", "body"]
-    # A wildcard-accept request with a clean URL/body is clean.
-    assert suspicious("/api/items?limit=10", b"") is None
+    assert suspicious("/api/items", b"Accept: */*") is None
+    assert suspicious("/x?a=*/*") is None
 
 
 def test_empty_inputs():
@@ -76,6 +82,5 @@ def test_empty_inputs():
 
 
 def test_binary_body_does_not_crash():
-    assert suspicious("/upload", bytes(range(256))) is not None or True
-    # Whatever it returns, it must not raise; binary junk may or may not
-    # match the lexical patterns — both outcomes are acceptable here.
+    result = suspicious("/upload", bytes(range(256)))
+    assert result is None or isinstance(result, str)
