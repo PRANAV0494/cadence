@@ -62,6 +62,38 @@ Unmodified web app ◄───────────────────�
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Demo
+
+Three outcomes, one path. Requires Python 3.11+ and a browser you can point at a proxy.
+
+```bash
+pip install -e ".[proxy]"   # mitmproxy comes with the extra
+cadence proxy               # listens on 127.0.0.1:8080
+```
+
+Point your browser's proxy at `127.0.0.1:8080` (Firefox: Settings ->
+Network Settings -> Manual proxy configuration).
+
+For HTTPS sites, trust the proxy's certificate first: with the proxy
+running, open `http://mitm.it` in the proxied browser and install the
+mitmproxy CA — or simply use a plain-HTTP site for the demo.
+
+The gate reads fields with human-text names (`message`, `comment`,
+`q`, `body`, ...). Use a form with one of those — a login form's
+`password` field is deliberately never gated.
+
+What you should see, and why:
+
+| You do | The proxy does | Why |
+|---|---|---|
+| Type into a `message`/`comment`/`q` field, submit | Request passes through | The typed string contains the submitted text: provenance justified |
+| Submit that same form without typing (devtools-prefilled or scripted) | `403` from the proxy, nothing forwarded | Text with zero matching keystrokes is unjustified |
+| Type with machine-perfect timing (a script driving key events) | `401` with a step-up challenge, nothing forwarded | The SPRT walk crossed the step-up bound |
+
+No accuracy numbers are quoted here beyond what
+[evaluation/results.json](evaluation/results.json) records with its
+measurement source; the demo shows mechanics, not performance.
+
 ## Honest status
 
 **What works today:** the feature extractor (34 timing features, pure stdlib), a deployed
