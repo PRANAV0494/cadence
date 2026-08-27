@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,31 +30,89 @@ def _addon_path() -> str:
     return str(addon)
 
 
-def _proxy(args) -> None:
+def _mitmdump_argv(mitmdump: str, addon: str, host: str, port: int) -> list[str]:
+    """Forward-proxy argv. Addon path is one element even if it contains spaces."""
+    return [
+        mitmdump,
+        "-s",
+        addon,
+        "--listen-host",
+        host,
+        "--listen-port",
+        str(port),
+    ]
+
+
+def _mitmdump_reverse_argv(
+    mitmdump: str, addon: str, host: str, port: int, upstream: str
+) -> list[str]:
+    """Reverse-proxy argv: browsers hit host:port as a normal website."""
+    return [
+        mitmdump,
+        "-s",
+        addon,
+        "--mode",
+        f"reverse:{upstream}",
+        "--listen-host",
+        host,
+        "--listen-port",
+        str(port),
+    ]
+
+
+def _require_proxy() -> tuple[str, str]:
     try:
         addon = _addon_path()
     except (ImportError, OSError):
-        sys.exit("cadence: proxy addon missing — install the package (pip install .) or run from the repo")
+        sys.exit(
+            "cadence: proxy addon missing — install the package (pip install .) or run from the repo"
+        )
     mitmdump = shutil.which("mitmdump")
     if not mitmdump:
-        print('cadence: mitmdump not found. Install it with: pip install "cadence[proxy]"', file=sys.stderr)
+        print(
+            'cadence: mitmdump not found. Install it with: pip install "cadence[proxy]"',
+            file=sys.stderr,
+        )
         sys.exit(2)
+    return mitmdump, addon
+
+
+def _run_mitmdump(argv: list[str]) -> None:
+    # os.execv on Windows does not quote argv. pip's mitmdump.exe then
+    # splits on spaces, so a path like COLLEGE PROJECTS becomes
+    # "No such script: ...\COLLEGE". subprocess.call uses list2cmdline.
+    if os.name == "nt":
+        raise SystemExit(subprocess.call(argv))
+    os.execv(argv[0], argv)
+
+
+def _proxy(args) -> None:
+    mitmdump, addon = _require_proxy()
     print(
         f"cadence proxy listening on http://{args.host}:{args.port} — point your browser proxy at it",
         file=sys.stderr,
     )
-    os.execv(
-        mitmdump,
-        [
-            mitmdump,
-            "-s",
-            addon,
-            "--listen-host",
-            args.host,
-            "--listen-port",
-            str(args.port),
-        ],
+    _run_mitmdump(_mitmdump_argv(mitmdump, addon, args.host, args.port))
+
+
+def _demo(args) -> None:
+    """Form + reverse proxy. Open the printed URL in a normal browser."""
+    mitmdump, addon = _require_proxy()
+    from cadence.demo import bind_form_server, serve_in_thread
+
+    httpd = bind_form_server("127.0.0.1")
+    serve_in_thread(httpd)
+    up_host, up_port = httpd.server_address[:2]
+    upstream = f"http://{up_host}:{up_port}"
+    print(
+        f"cadence demo: open http://{args.host}:{args.port}/ in your normal browser\n"
+        f"              no proxy settings, no special Chrome\n"
+        f"              console: http://{args.host}:{args.port}/__cadence/console",
+        file=sys.stderr,
     )
+    argv = _mitmdump_reverse_argv(mitmdump, addon, args.host, args.port, upstream)
+    # Always subprocess: execv would kill the form thread.
+    raise SystemExit(subprocess.call(argv))
 
 
 def _doctor(args) -> int:
@@ -127,6 +186,14 @@ def main(argv=None) -> None:
     proxy.add_argument("--host", default="127.0.0.1")
     proxy.add_argument("--port", type=int, default=8080)
     proxy.set_defaults(func=_proxy)
+
+    demo = sub.add_parser(
+        "demo",
+        help="form + reverse proxy; open the printed URL in a normal browser",
+    )
+    demo.add_argument("--host", default="127.0.0.1")
+    demo.add_argument("--port", type=int, default=8080)
+    demo.set_defaults(func=_demo)
 
     doctor = sub.add_parser("doctor", help="check the proxy's prerequisites")
     doctor.set_defaults(func=_doctor)

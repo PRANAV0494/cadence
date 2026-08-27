@@ -25,7 +25,7 @@ from console import (  # noqa: E402
     snapshot,
 )
 from drift import drift_signal  # noqa: E402
-from fusion import update  # noqa: E402
+from fusion import update as fusion_update  # noqa: E402
 from inject import csp_hashes, inject, is_html  # noqa: E402
 from provenance import (  # noqa: E402
     SESSION_COOKIE,
@@ -33,12 +33,31 @@ from provenance import (  # noqa: E402
     new_session_id,
     post_is_justified,
     session_key,
+    text_fields_in_body,
+    typed_string,
 )
 
 EDGE_DIR = Path(__file__).resolve().parent
 SDK_PATH = EDGE_DIR / "cadence-sdk.js"
 SDK_SOURCE = SDK_PATH.read_text(encoding="utf-8")
 SDK_HASHES = csp_hashes(SDK_SOURCE)
+
+
+class _ModuleState:
+    """Console snapshot source: this file's globals, not sys.modules.
+
+    mitmproxy may exec the script under a name that is later dropped
+    from sys.modules; looking up __name__ then KeyErrors on every poll.
+    """
+
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+_STATE = _ModuleState()
 
 TELEMETRY_PATH = "/__cadence/telemetry"
 
@@ -158,18 +177,25 @@ class CadenceAddon:
         flow.response = http.Response.make(
             200,
             page.encode("utf-8"),
-            {"Content-Type": "text/html; charset=utf-8"},
+            {
+                "Content-Type": "text/html; charset=utf-8",
+                "Cache-Control": "no-store",
+            },
         )
 
     def _serve_console_state(self, flow):
         """State snapshot as JSON, same ownership rule as telemetry."""
         from mitmproxy import http
 
-        payload = snapshot(sys.modules[__name__]).encode("utf-8")
+        payload = snapshot(_STATE).encode("utf-8")
         flow.response = http.Response.make(
             200,
             payload,
-            {"Content-Type": "application/json"},
+            {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-store",
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     def _accumulate(self, key: str, events: list[dict]) -> None:
@@ -201,7 +227,10 @@ class CadenceAddon:
                 seen[name] = fired
             # Unchanged (or None-before-None) flags contribute nothing:
             # the walk already holds this evidence once.
-        state = update(score.get(key, 0.0), fresh)
+        # fusion_update, not `update`: mitmproxy treats a module-level
+        # update() as its options-changed hook (no arguments). Binding
+        # fusion.update there TypeErrors on every flow.
+        state = fusion_update(score.get(key, 0.0), fresh)
         score[key] = state["llr"]
         if decisions.get(key) == "step-up":
             if state["decision"] != "clean":
@@ -301,6 +330,13 @@ class CadenceAddon:
         events = sessions.get(_flow_session_key(flow), [])
         if post_is_justified(body, content_type, events):
             return False
+        print(
+            "cadence 403 provenance: "
+            f"typed={typed_string(events)!r} "
+            f"fields={text_fields_in_body(body, content_type)!r} "
+            f"n={len(events)}",
+            file=sys.stderr,
+        )
         from mitmproxy import http
 
         flow.response = http.Response.make(

@@ -11,9 +11,27 @@ BOOT_BLOCK = """<script id="cadence-sdk-boot">
   window.__CADENCE_SDK_LOADED = true;
   var r = CadenceSDK.createRecorder();
   r.attach(document);
-  var send = function () { CadenceSDK.flush(r); };
-  window.addEventListener("pagehide", send);
-  window.setInterval(send, 5000);
+  var pending = Promise.resolve();
+  var push = function () {
+    var events = r.drain();
+    var p = fetch("/__cadence/telemetry", {
+      method: "POST",
+      body: JSON.stringify({ events: events }),
+      keepalive: true,
+      credentials: "include"
+    });
+    pending = Promise.all([pending, p]).then(function () {}, function () {});
+    return pending;
+  };
+  window.addEventListener("pagehide", push);
+  window.setInterval(push, 500);
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (!form || (form.tagName || "").toUpperCase() !== "FORM") return;
+    e.preventDefault();
+    var go = function () { HTMLFormElement.prototype.submit.call(form); };
+    push().then(go, go);
+  }, true);
 })();
 </script>"""
 
