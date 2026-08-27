@@ -10,6 +10,7 @@ from __future__ import annotations
 import itertools
 import json
 import sys
+import time
 from pathlib import Path
 
 # edge/ is not an installed package; put it on sys.path so the sibling
@@ -27,6 +28,7 @@ from console import (  # noqa: E402
 from drift import drift_signal  # noqa: E402
 from fusion import update as fusion_update  # noqa: E402
 from inject import csp_hashes, inject, is_html  # noqa: E402
+from malice import suspicious  # noqa: E402
 from provenance import (  # noqa: E402
     SESSION_COOKIE,
     cap_session,
@@ -36,6 +38,12 @@ from provenance import (  # noqa: E402
     text_fields_in_body,
     typed_string,
 )
+from ttl import expire, touch  # noqa: E402
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+from cadence.policy import caep as caep_policy  # noqa: E402
 
 EDGE_DIR = Path(__file__).resolve().parent
 SDK_PATH = EDGE_DIR / "cadence-sdk.js"
@@ -82,7 +90,15 @@ last_flags: dict[str, dict[str, object]] = {}
 # Console display only.
 blocks: dict[str, int] = {}
 
+# session_key -> last activity unix time. Idle keys are dropped by ttl.expire.
+last_seen: dict[str, float] = {}
+
+# Recent CAEP-shaped events and console timeline (capped).
+caep_log: list[dict] = []
+timeline: list[dict] = []
+
 _session_counter = itertools.count(1)
+_STORES = (sessions, score, decisions, last_flags, blocks)
 
 
 def _client_fallback(flow) -> str:
@@ -146,10 +162,25 @@ def _add_set_cookie(response, sid: str) -> None:
             response.headers["Set-Cookie"] = set_cookie
 
 
+def _note(kind: str, key: str, detail: str = "") -> None:
+    timeline.append({"kind": kind, "sid": key[:16], "detail": detail})
+    del timeline[:-50]
+
+
+def _emit_caep(key: str, reason: str) -> None:
+    evt = caep_policy.event(key, reason)
+    caep_log.append(evt)
+    del caep_log[:-50]
+    _note("caep", key, reason)
+    print(f"cadence caep: {reason} session={key[:16]}", file=sys.stderr)
+
+
 class CadenceAddon:
     def request(self, flow):
         """Responsibilities in order: console, telemetry sink, step-up
-        check, provenance gate."""
+        check, provenance gate, malice."""
+        now = time.time()
+        expire(now, last_seen, list(_STORES))
         path = flow.request.path.split("?")[0]
         if path == CONSOLE_PATH:
             self._serve_console(flow)
@@ -163,11 +194,14 @@ class CadenceAddon:
         if self._maybe_step_up(flow):
             key = _flow_session_key(flow)
             blocks[key] = blocks.get(key, 0) + 1
+            _emit_caep(key, "step-up")
             return
         if self._enforce_provenance(flow):
             key = _flow_session_key(flow)
             blocks[key] = blocks.get(key, 0) + 1
+            _emit_caep(key, "provenance-unjustified")
             return
+        self._note_malice(flow)
 
     def _serve_console(self, flow):
         """Serve the demo console page. Proxy-owned path, never forwarded."""
@@ -238,6 +272,34 @@ class CadenceAddon:
         else:
             decisions[key] = state["decision"]
 
+    def _flag(self, key: str, name: str, fired) -> None:
+        """Count one detector outcome if it changed, same rule as _accumulate."""
+        seen = last_flags.setdefault(key, {})
+        if name in seen and seen[name] == fired:
+            return
+        seen[name] = fired
+        state = fusion_update(score.get(key, 0.0), {name: fired})
+        score[key] = state["llr"]
+        if decisions.get(key) == "step-up":
+            if state["decision"] != "clean":
+                decisions[key] = "step-up"
+        else:
+            decisions[key] = state["decision"]
+
+    def _note_malice(self, flow) -> None:
+        """Lexical URL+body triage into the walk. Does not 403 by itself."""
+        try:
+            url = flow.request.path
+        except AttributeError:
+            url = ""
+        body = getattr(flow.request, "raw_content", None) or b""
+        hit = suspicious(url, body)
+        key = _flow_session_key(flow)
+        touch(last_seen, key, time.time())
+        if hit:
+            self._flag(key, "malice", True)
+            _note("malice", key, hit)
+
     def _maybe_step_up(self, flow) -> bool:
         """401 + WWW-Authenticate (RFC 9470) when the fusion score says so.
 
@@ -302,6 +364,7 @@ class CadenceAddon:
         # changes (a second driver dilutes whole-stream automation below
         # its threshold, silently un-firing a signal the walk already
         # counted). SPRT requires evidence to accumulate monotonically.
+        touch(last_seen, key, time.time())
         if events:
             self._accumulate(key, sessions[key])
         # A response set in the request hook short-circuits the proxy:

@@ -44,6 +44,9 @@ FALLBACK_RATES = {
     "automation": (0.90, 0.02),
     "drift": (0.70, 0.05),
     "provenance": (0.85, 0.01),
+    # Engineering estimate, not a measured fixture — malice has no
+    # labelled TPR/FPR in results.json yet.
+    "malice": (0.80, 0.02),
 }
 
 
@@ -69,7 +72,10 @@ def _load_rates() -> dict[str, tuple[float, float]]:
         n = rate[n_key]
         return (fired + 0.5) / (n + 1.0)
 
-    rates = {"provenance": FALLBACK_RATES["provenance"]}
+    rates = {
+        "provenance": FALLBACK_RATES["provenance"],
+        "malice": FALLBACK_RATES["malice"],
+    }
     try:
         data = _json.loads(
             (_Path(__file__).resolve().parents[1] / "evaluation" / "results.json")
