@@ -15,31 +15,45 @@ BOOT_BLOCK = """<script id="cadence-sdk-boot">
   // the proxy never acknowledged must not be lost, or an honest submit
   // 403s on an empty buffer.
   var queue = [];
-  var inflight = null;
-  var push = function (unload) {
-    var drained = r.drain();
-    for (var i = 0; i < drained.length; i++) queue.push(drained[i]);
-    if (inflight) return inflight;
-    if (queue.length === 0) return Promise.resolve();
+  var sendQueue = function (unload) {
     var batch = queue;
     queue = [];
-    inflight = fetch("/__cadence/telemetry", {
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctrl ? window.setTimeout(function () { ctrl.abort(); }, 1500) : null;
+    var opts = {
       method: "POST",
       body: JSON.stringify({ events: batch }),
       keepalive: unload === true,
       credentials: "include"
-    }).then(function (res) {
-      inflight = null;
+    };
+    if (ctrl) opts.signal = ctrl.signal;
+    return fetch("/__cadence/telemetry", opts).then(function (res) {
+      if (timer !== null) window.clearTimeout(timer);
       if (!res.ok) {
         queue = batch.concat(queue);
         throw new Error("cadence telemetry " + res.status);
       }
     }, function (err) {
-      inflight = null;
+      if (timer !== null) window.clearTimeout(timer);
       queue = batch.concat(queue);
       throw err;
     });
-    return inflight;
+  };
+  // One batch on the wire at a time, serialized on a chain. Each push()
+  // appends its own send, so the returned promise acks everything
+  // drained up to THIS call — not merely the batch that happened to be
+  // in flight. The abort timer above makes every link settle, so a hung
+  // fetch cannot wedge later flushes.
+  var chain = Promise.resolve();
+  var push = function (unload) {
+    var drained = r.drain();
+    for (var i = 0; i < drained.length; i++) queue.push(drained[i]);
+    var attempt = function () {
+      if (queue.length === 0) return undefined;
+      return sendQueue(unload);
+    };
+    chain = chain.then(attempt, attempt);
+    return chain;
   };
   window.addEventListener("pagehide", function () { push(true); });
   window.setInterval(function () {
@@ -66,9 +80,22 @@ BOOT_BLOCK = """<script id="cadence-sdk-boot">
         HTMLFormElement.prototype.submit.call(form);
       }
     };
-    // A hung telemetry fetch must not wedge the form forever.
-    var cap = new Promise(function (resolve) { window.setTimeout(resolve, 2000); });
-    Promise.race([push(false), cap]).then(go, go);
+    // Navigate only on an acked flush: submitting after a FAILED flush
+    // guarantees a 403 on a buffer the proxy never received. On failure
+    // the batch is already re-queued, so retry briefly and otherwise
+    // leave the form in place — the interval keeps flushing and the
+    // user's next click will find the queue delivered.
+    var tries = 6;
+    var attempt = function () {
+      push(false).then(go, function () {
+        tries -= 1;
+        if (tries > 0) { window.setTimeout(attempt, 400); }
+        else if (window.console && console.warn) {
+          console.warn("cadence: telemetry unacknowledged; submit deferred");
+        }
+      });
+    };
+    attempt();
   }, false);
 })();
 </script>"""

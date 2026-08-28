@@ -99,6 +99,14 @@ def test_boot_block_waits_for_telemetry_on_submit():
     assert "HTMLFormElement.prototype.submit" in BOOT_BLOCK
     # Failed batches are re-queued, not silently dropped.
     assert "queue = batch.concat(queue)" in BOOT_BLOCK
+    # The ack covers everything drained up to the push call (sends are
+    # serialized on a chain), a hung fetch is aborted rather than left
+    # to wedge the chain, and a submit navigates ONLY on an acked flush
+    # — no timeout race into a guaranteed 403.
+    assert "chain = chain.then(attempt, attempt)" in BOOT_BLOCK
+    assert "AbortController" in BOOT_BLOCK
+    assert ".then(go," in BOOT_BLOCK
+    assert "Promise.race" not in BOOT_BLOCK
 
 
 def test_addon_script_does_not_export_update():
