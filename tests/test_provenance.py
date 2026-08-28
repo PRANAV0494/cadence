@@ -119,6 +119,17 @@ def test_typed_string_reconstructs_characters():
     assert typed_string([_k(c) for c in "hello"]) == "hello"
 
 
+def test_enter_in_textarea_is_a_newline():
+    events = [_k("h"), _k("Enter", is_modifier=True), _k("i")]
+    assert typed_string(events) == "h\ni"
+    assert post_is_justified(b"message=h%0Ai", FORM, events) is True
+
+
+def test_spacebar_key_name_is_a_space():
+    events = [_k("h"), _k("Spacebar", is_modifier=True), _k("i")]
+    assert typed_string(events) == "h i"
+
+
 def test_backspace_pops_the_last_character():
     assert typed_string([_k("h"), _k("e"), _k("y"), _k("Backspace", is_backspace=True)]) == "he"
 

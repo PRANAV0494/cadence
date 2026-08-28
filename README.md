@@ -64,30 +64,35 @@ Unmodified web app ◄───────────────────�
 
 ## Demo
 
-Three outcomes, one path. Requires Python 3.11+ and a browser you can point at a proxy.
+One command. **Normal browser** — no proxy settings, no special Chrome.
 
-```bash
-pip install -e ".[proxy]"   # mitmproxy comes with the extra
-cadence proxy               # listens on 127.0.0.1:8080
+Windows (from the repo):
+
+```powershell
+.\start.ps1
 ```
 
-Point your browser's proxy at `127.0.0.1:8080` (Firefox: Settings ->
-Network Settings -> Manual proxy configuration).
+Anywhere with Python 3.11+:
 
-For HTTPS sites, trust the proxy's certificate first: with the proxy
-running, open `http://mitm.it` in the proxied browser and install the
-mitmproxy CA — or simply use a plain-HTTP site for the demo.
+```bash
+pip install -e ".[proxy]"
+cadence demo
+```
 
-The gate reads fields with human-text names (`message`, `comment`,
-`q`, `body`, ...). Use a form with one of those — a login form's
-`password` field is deliberately never gated.
+Then open **http://127.0.0.1:8080/** in Chrome / Edge / Firefox the way you
+already use it. Console: **http://127.0.0.1:8080/__cadence/console**.
+If 8080 is taken: `cadence demo --port 8787`.
+
+`cadence proxy` still exists for the lab forward-proxy path (browser must
+be pointed at the proxy, HTTPS needs the mitmproxy CA). You do not need
+that to try the demo.
 
 What you should see, and why:
 
 | You do | The proxy does | Why |
 |---|---|---|
-| Type into a `message`/`comment`/`q` field, submit | Request passes through | The typed string contains the submitted text: provenance justified |
-| Submit that same form without typing (devtools-prefilled or scripted) | `403` from the proxy, nothing forwarded | Text with zero matching keystrokes is unjustified |
+| Type into the `message` box, submit | Green "allowed" page | The typed string contains the submitted text: provenance justified |
+| Paste or script-fill that box without typing, submit | `403` from the proxy, nothing forwarded | Text with zero matching keystrokes is unjustified |
 | Type with machine-perfect timing (a script driving key events) | `401` with a step-up challenge, nothing forwarded | The SPRT walk crossed the step-up bound |
 
 No accuracy numbers are quoted here beyond what

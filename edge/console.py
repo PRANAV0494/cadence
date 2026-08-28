@@ -58,15 +58,19 @@ function render(state) {
     state.dropped + " blocked request(s) — live";
 }
 function poll() {
-  fetch("%STATE_PATH%")
-    .then(function (r) { return r.json(); })
+  fetch(location.origin + "%STATE_PATH%", { cache: "no-store", credentials: "same-origin" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
     .then(function (state) {
       render(state);
       document.getElementById("conn").textContent =
         state.dropped + " blocked request(s) — live, 1s poll";
     })
-    .catch(function () {
-      document.getElementById("conn").textContent = "fetch failed; retrying...";
+    .catch(function (err) {
+      document.getElementById("conn").textContent =
+        "fetch failed (" + (err && err.message ? err.message : err) + "); retrying...";
     });
   setTimeout(poll, 1000);
 }

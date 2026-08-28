@@ -117,7 +117,7 @@ def typed_string(events: list[dict]) -> str:
     for e in events:
         if e.get("event_type") != "keydown":
             continue
-        if e.get("is_modifier") or e.get("is_paste"):
+        if e.get("is_paste"):
             continue
         # Backspace is recorded as key='Backspace' (multi-char) with
         # is_backspace set — test the flag before the single-char filter,
@@ -127,6 +127,17 @@ def typed_string(events: list[dict]) -> str:
                 chars.pop()
             continue
         key = e.get("key")
+        # Enter is is_modifier in the SDK (no character in the key name)
+        # but a textarea still inserts a newline. Space is " " in Chrome
+        # and "Spacebar" in older UAs.
+        if key in ("Enter", "Return"):
+            chars.append("\n")
+            continue
+        if key in (" ", "Space", "Spacebar"):
+            chars.append(" ")
+            continue
+        if e.get("is_modifier"):
+            continue
         if not isinstance(key, str) or len(key) != 1:
             continue
         chars.append(key)
@@ -246,11 +257,15 @@ def post_is_justified(body: bytes, content_type: str | None, events: list[dict])
     fields = text_fields_in_body(body, content_type)
     if not fields:
         return True
-    typed = typed_string(events)
+    typed = _fold_newlines(typed_string(events))
     for value in fields.values():
-        if _HAS_LETTER.search(value) and value not in typed:
+        if _HAS_LETTER.search(value) and _fold_newlines(value) not in typed:
             return False
     return True
+
+
+def _fold_newlines(s: str) -> str:
+    return s.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def cap_session(events: list[dict], limit: int = MAX_EVENTS_PER_SESSION) -> list[dict]:
