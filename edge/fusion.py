@@ -44,6 +44,12 @@ FALLBACK_RATES = {
     "automation": (0.90, 0.02),
     "drift": (0.70, 0.05),
     "provenance": (0.85, 0.01),
+    # Engineering estimate, not a measured fixture — malice has no
+    # labelled TPR/FPR in results.json yet. The ratio is deliberately
+    # weak: ln(0.60/0.15) = ln 4 ~ 1.39, under the ln 18 ~ 2.89 step-up
+    # bound, so one uncalibrated lexical hit can never be a terminal
+    # 401 by itself — it contributes to the walk, other evidence decides.
+    "malice": (0.60, 0.15),
 }
 
 
@@ -69,7 +75,10 @@ def _load_rates() -> dict[str, tuple[float, float]]:
         n = rate[n_key]
         return (fired + 0.5) / (n + 1.0)
 
-    rates = {"provenance": FALLBACK_RATES["provenance"]}
+    rates = {
+        "provenance": FALLBACK_RATES["provenance"],
+        "malice": FALLBACK_RATES["malice"],
+    }
     try:
         data = _json.loads(
             (_Path(__file__).resolve().parents[1] / "evaluation" / "results.json")

@@ -84,3 +84,17 @@ def test_empty_inputs():
 def test_binary_body_does_not_crash():
     result = suspicious("/upload", bytes(range(256)))
     assert result is None or isinstance(result, str)
+
+
+# ── one hit is a contribution, not a verdict ───────────────────
+
+def test_single_malice_hit_does_not_step_up():
+    """The malice rates are placeholders, so one lexical hit must not be
+    a terminal decision: its LLR stays under the Wald upper bound and the
+    walk continues. A backtick in a chat message is not a 401."""
+    from fusion import bounds, signal_llr, update
+
+    _, upper = bounds()
+    assert signal_llr("malice", True) < upper
+    state = update(0.0, {"malice": True})
+    assert state["decision"] == "continue"

@@ -20,6 +20,8 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs
 
+from trusted import is_trusted
+
 SESSION_COOKIE = "__cadence_sid"
 
 # A POST with more than this many total keystrokes buffered is truncated at
@@ -103,6 +105,7 @@ def count_keystrokes(events: list[dict]) -> int:
         if e.get("event_type") == "keydown"
         and not e.get("is_modifier")
         and not e.get("is_paste")
+        and is_trusted(e)
     )
 
 
@@ -118,6 +121,8 @@ def typed_string(events: list[dict]) -> str:
         if e.get("event_type") != "keydown":
             continue
         if e.get("is_paste"):
+            continue
+        if not is_trusted(e):
             continue
         # Backspace is recorded as key='Backspace' (multi-char) with
         # is_backspace set — test the flag before the single-char filter,

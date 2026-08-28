@@ -31,8 +31,12 @@ PAGE = """<!doctype html>
 <h1>cadence console (demo)</h1>
 <div id="conn">loading...</div>
 <table><thead>
-<tr><th>session</th><th>decision</th><th>score</th><th>automation</th><th>drift</th><th>provenance</th><th>blocks</th></tr>
+<tr><th>session</th><th>decision</th><th>score</th><th>automation</th><th>drift</th><th>provenance</th><th>malice</th><th>blocks</th></tr>
 </thead><tbody id="rows"></tbody></table>
+<h1>timeline</h1>
+<table><thead>
+<tr><th>kind</th><th>session</th><th>detail</th></tr>
+</thead><tbody id="log"></tbody></table>
 <script>
 function cell(text, cls) {
   var td = document.createElement("td");
@@ -51,8 +55,18 @@ function render(state) {
     tr.appendChild(cell(s.flags && s.flags.automation));
     tr.appendChild(cell(s.flags && s.flags.drift));
     tr.appendChild(cell(s.flags && s.flags.provenance));
+    tr.appendChild(cell(s.flags && s.flags.malice));
     tr.appendChild(cell(s.blocks));
     rows.appendChild(tr);
+  });
+  var log = document.getElementById("log");
+  log.innerHTML = "";
+  (state.timeline || []).slice().reverse().forEach(function (e) {
+    var tr = document.createElement("tr");
+    tr.appendChild(cell(e.kind));
+    tr.appendChild(cell(e.sid));
+    tr.appendChild(cell(e.detail));
+    log.appendChild(tr);
   });
   document.getElementById("conn").textContent =
     state.dropped + " blocked request(s) — live";
@@ -102,5 +116,6 @@ def snapshot(state) -> str:
             for sid in sorted(sids)
         ],
         "dropped": sum(state.blocks.values()),
+        "timeline": list(getattr(state, "timeline", [])),
     }
     return json.dumps(payload)

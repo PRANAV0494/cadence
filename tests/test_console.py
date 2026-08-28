@@ -99,6 +99,7 @@ def test_snapshot_reports_decision_flags_and_blocks():
     assert session["flags"]["automation"] is True
     assert session["blocks"] == 3
     assert data["dropped"] == 3
+    assert data["timeline"] == []
 
 
 def test_long_sids_are_masked():
