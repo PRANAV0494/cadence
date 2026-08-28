@@ -26,10 +26,12 @@ def _down_up(seq: int, key: str, t: float, dwell: float, trusted: bool = True) -
     ]
 
 
-def human_jitter(n: int = 40, seed: int = 1) -> list[list[dict]]:
+def human_jitter(
+    n: int = 40, seed: int = 1, start: float = 0.0, seq_offset: int = 0
+) -> list[list[dict]]:
     rng = random.Random(seed)
-    t = 0.0
-    seq = 0
+    t = start
+    seq = seq_offset
     flush: list[dict] = []
     for _ in range(n):
         gap = rng.uniform(80.0, 280.0)
@@ -40,9 +42,11 @@ def human_jitter(n: int = 40, seed: int = 1) -> list[list[dict]]:
     return [flush]
 
 
-def machine_constant(n: int = 40, gap: float = 80.0) -> list[list[dict]]:
-    t = 0.0
-    seq = 0
+def machine_constant(
+    n: int = 40, gap: float = 80.0, start: float = 0.0, seq_offset: int = 0
+) -> list[list[dict]]:
+    t = start
+    seq = seq_offset
     flush: list[dict] = []
     for _ in range(n):
         t += gap
@@ -63,9 +67,22 @@ def untrusted_script(n: int = 20) -> list[list[dict]]:
     return [flush]
 
 
-def handoff(human_n: int = 30, machine_n: int = 30, seed: int = 2) -> list[list[dict]]:
-    """Human flush, then a constant machine flush — a takeover mid-session."""
-    return human_jitter(human_n, seed) + machine_constant(machine_n)
+def handoff(
+    human_n: int = 30, machine_n: int = 30, seed: int = 2, gap_ms: float = 700.0
+) -> list[list[dict]]:
+    """Human flush, then a constant machine flush — a takeover mid-session.
+
+    The machine's clock starts after the human's last event and its seqs
+    continue from the human's: detectors sort by timestamp and pair by
+    seq, so two flushes both starting at t=0 / seq=0 would interleave
+    into one mixed stream and the labelled takeover would replay clean.
+    """
+    human = human_jitter(human_n, seed)
+    last_t = max(e["timestamp"] for e in human[0])
+    machine = machine_constant(
+        machine_n, start=last_t + gap_ms, seq_offset=human_n
+    )
+    return human + machine
 
 
 def to_jsonl(rounds: list[list[dict]]) -> str:
