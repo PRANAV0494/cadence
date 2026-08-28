@@ -9,10 +9,10 @@ CADENCE asks three questions on that live session:
 2. **Automation** — does timing look synthesised?
 3. **Drift** — did the driver change since the start of this session?
 
-A fourth, lexical **malice** detector exists as a module with tests
-(`edge/malice.py`, URL and body only), but it is **not yet invoked on the
-proxy request path or fed into the SPRT walk** — that wiring is on a
-sibling branch. When it lands it will be triage, not a WAF.
+A fourth, lexical **malice** signal (`edge/malice.py`, URL and body only)
+feeds the same SPRT walk under deliberately weak placeholder rates: one
+hit cannot cross the step-up bound by itself. It is triage, not a WAF —
+the matching request is still forwarded.
 
 **In scope:** form POSTs (and JSON/multipart text fields) through the proxy;
 keystroke telemetry the proxy itself received.

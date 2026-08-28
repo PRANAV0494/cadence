@@ -311,3 +311,56 @@ def test_provenance_403_still_fires_for_unjustified_text(monkeypatch):
     addon.addons[0].request(flow)
     assert flow.response is not None
     assert flow.response.status_code == 403
+
+
+def _clear(addon):
+    for store in (addon.sessions, addon.score, addon.decisions,
+                  addon.last_flags, addon.blocks, addon.last_seen,
+                  addon.caep_emitted):
+        store.clear()
+    addon.caep_log.clear()
+
+
+def test_step_up_emits_token_claims_change_once(monkeypatch):
+    """A 401 challenge is not a revocation: CAEP carries
+    token-claims-change, and repeated blocked retries add no new events."""
+    from cadence.policy.caep import SESSION_REVOKED, TOKEN_CLAIMS_CHANGE
+
+    addon = _load_addon()
+    _clear(addon)
+    _fake_mitmproxy(monkeypatch)
+
+    r1, r2 = _attack_session()
+    addon.addons[0].request(_telemetry(r1))
+    addon.addons[0].request(_telemetry(r2))
+    for _ in range(3):
+        flow = _page_request()
+        addon.addons[0].request(flow)
+        assert flow.response.status_code == 401
+
+    assert len(addon.caep_log) == 1
+    (evt,) = addon.caep_log
+    assert TOKEN_CLAIMS_CHANGE in evt["events"]
+    assert SESSION_REVOKED not in evt["events"]
+
+
+def test_provenance_403_emits_session_revoked_once(monkeypatch):
+    """The hard 403 is the revocation-shaped outcome, and it too is one
+    event per session, not one per blocked retry."""
+    from cadence.policy.caep import SESSION_REVOKED
+
+    addon = _load_addon()
+    _clear(addon)
+    _fake_mitmproxy(monkeypatch)
+
+    for _ in range(3):
+        flow = _Flow(
+            _Request("/comment", b"message=hello+world",
+                     headers={"cookie": "__cadence_sid=s9", "content-type": FORM})
+        )
+        addon.addons[0].request(flow)
+        assert flow.response.status_code == 403
+
+    assert len(addon.caep_log) == 1
+    (evt,) = addon.caep_log
+    assert SESSION_REVOKED in evt["events"]

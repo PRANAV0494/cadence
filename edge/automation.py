@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import statistics
 
+from trusted import is_trusted
+
 # CV below this AND unique fraction below this → automated.
 # Chosen against CMU-keyrec-style human distributions (CV >= 0.3 for any
 # realistic passage) vs synthetic constant-rate streams (CV < 0.05).
@@ -53,6 +55,7 @@ def character_keydowns(events: list[dict]) -> list[dict]:
         and not e.get("is_modifier")
         and not e.get("is_paste")
         and not e.get("is_backspace")
+        and is_trusted(e)
     ]
     downs.sort(key=lambda e: e.get("timestamp", 0))
     return downs

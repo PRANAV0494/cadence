@@ -19,11 +19,11 @@ rejects a short denylist of retracted literals. Unmarked numerals are
   it is given and invents nothing; leave-one-agent-out waits for real
   agent captures.
 
-**Still outstanding (not on this branch)**
+**Still outstanding**
 
 - Labelled synthetic stream harness and browser timer-clamp quantization
-  (planned as `evaluation/harness/streams.py` and
-  `evaluation/timer_clamp.py`; on a sibling branch, not merged here).
+  (`evaluation/harness/streams.py`, `evaluation/timer_clamp.py`) arrive
+  separately with PR #28 — synthetic-only, not field results.
 - Recapture of human sessions after the dwell-bug SDK fix.
 - Leave-one-agent-out on real 2026 agent frameworks.
 - Adversarial humanization / statistical forgery round.
