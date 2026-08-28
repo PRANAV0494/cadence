@@ -11,27 +11,65 @@ BOOT_BLOCK = """<script id="cadence-sdk-boot">
   window.__CADENCE_SDK_LOADED = true;
   var r = CadenceSDK.createRecorder();
   r.attach(document);
-  var pending = Promise.resolve();
-  var push = function () {
-    var events = r.drain();
-    var p = fetch("/__cadence/telemetry", {
+  // Batches that fail to POST go back on this queue: drained keystrokes
+  // the proxy never acknowledged must not be lost, or an honest submit
+  // 403s on an empty buffer.
+  var queue = [];
+  var inflight = null;
+  var push = function (unload) {
+    var drained = r.drain();
+    for (var i = 0; i < drained.length; i++) queue.push(drained[i]);
+    if (inflight) return inflight;
+    if (queue.length === 0) return Promise.resolve();
+    var batch = queue;
+    queue = [];
+    inflight = fetch("/__cadence/telemetry", {
       method: "POST",
-      body: JSON.stringify({ events: events }),
-      keepalive: true,
+      body: JSON.stringify({ events: batch }),
+      keepalive: unload === true,
       credentials: "include"
+    }).then(function (res) {
+      inflight = null;
+      if (!res.ok) {
+        queue = batch.concat(queue);
+        throw new Error("cadence telemetry " + res.status);
+      }
+    }, function (err) {
+      inflight = null;
+      queue = batch.concat(queue);
+      throw err;
     });
-    pending = Promise.all([pending, p]).then(function () {}, function () {});
-    return pending;
+    return inflight;
   };
-  window.addEventListener("pagehide", push);
-  window.setInterval(push, 500);
+  window.addEventListener("pagehide", function () { push(true); });
+  window.setInterval(function () {
+    push(false).then(null, function () {});
+  }, 500);
   document.addEventListener("submit", function (e) {
     var form = e.target;
     if (!form || (form.tagName || "").toUpperCase() !== "FORM") return;
+    if (form.__cadenceResubmitted) {
+      delete form.__cadenceResubmitted;
+      return;
+    }
+    // Bubble phase, after the page's own handlers: a form the page
+    // cancels (AJAX submit) keeps that behavior untouched.
+    if (e.defaultPrevented) return;
     e.preventDefault();
-    var go = function () { HTMLFormElement.prototype.submit.call(form); };
-    push().then(go, go);
-  }, true);
+    var submitter = e.submitter;
+    var go = function () {
+      form.__cadenceResubmitted = true;
+      if (typeof form.requestSubmit === "function") {
+        if (submitter) { form.requestSubmit(submitter); }
+        else { form.requestSubmit(); }
+      } else {
+        HTMLFormElement.prototype.submit.call(form);
+      }
+    };
+    // A hung telemetry fetch must not wedge the form forever.
+    var cap = new Promise(function (resolve) { window.setTimeout(resolve, 2000); });
+    Promise.race([push(false), cap]).then(go, go);
+  }, false);
 })();
 </script>"""
 

@@ -194,7 +194,6 @@ class CadenceAddon:
             {
                 "Content-Type": "application/json",
                 "Cache-Control": "no-store",
-                "Access-Control-Allow-Origin": "*",
             },
         )
 
@@ -227,9 +226,8 @@ class CadenceAddon:
                 seen[name] = fired
             # Unchanged (or None-before-None) flags contribute nothing:
             # the walk already holds this evidence once.
-        # fusion_update, not `update`: mitmproxy treats a module-level
-        # update() as its options-changed hook (no arguments). Binding
-        # fusion.update there TypeErrors on every flow.
+        # fusion_update, not `update`: mitmproxy registers this script
+        # module as an addon, and update(flows) is a hook name.
         state = fusion_update(score.get(key, 0.0), fresh)
         score[key] = state["llr"]
         if decisions.get(key) == "step-up":
