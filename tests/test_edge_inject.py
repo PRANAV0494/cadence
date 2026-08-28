@@ -88,14 +88,22 @@ def test_boot_block_waits_for_telemetry_on_submit():
     assert 'addEventListener("submit"' in BOOT_BLOCK
     assert "preventDefault" in BOOT_BLOCK
     assert 'fetch("/__cadence/telemetry"' in BOOT_BLOCK
+    # Bubble phase + defaultPrevented bail: pages that cancel their own
+    # submit (AJAX forms) must keep that behavior.
+    assert "}, false);" in BOOT_BLOCK
+    assert "}, true);" not in BOOT_BLOCK
+    assert "e.defaultPrevented" in BOOT_BLOCK
+    # Re-submit preserves the submitter; prototype.submit is only the
+    # fallback for browsers without requestSubmit.
+    assert "requestSubmit" in BOOT_BLOCK
     assert "HTMLFormElement.prototype.submit" in BOOT_BLOCK
-    assert "pending" in BOOT_BLOCK
-    assert "setInterval(push, 500)" in BOOT_BLOCK
+    # Failed batches are re-queued, not silently dropped.
+    assert "queue = batch.concat(queue)" in BOOT_BLOCK
 
 
 def test_addon_script_does_not_export_update():
-    """mitmproxy calls module-level update() as an options hook with no
-    args. fusion.update(llr, signals) must not sit on that name."""
+    """mitmproxy registers the script module as an addon and update(flows)
+    is a hook name. fusion.update(llr, signals) must not sit on it."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -400,6 +408,9 @@ def test_boot_block_flushes_on_pagehide_and_interval():
     from inject import BOOT_BLOCK
 
     assert 'addEventListener("pagehide"' in BOOT_BLOCK
-    assert "setInterval(push, 500)" in BOOT_BLOCK
+    assert "}, 500);" in BOOT_BLOCK
     assert 'fetch("/__cadence/telemetry"' in BOOT_BLOCK
+    # keepalive is reserved for the unload flush; interval and submit
+    # flushes are ordinary fetches.
+    assert "keepalive: unload === true" in BOOT_BLOCK
 
