@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import statistics
 
+from trusted import is_trusted
+
 # Window size: first/last N character keydowns compared.
 WINDOW = 20
 
@@ -36,6 +38,7 @@ def _character_keydowns(events: list[dict]) -> list[dict]:
         and not e.get("is_modifier")
         and not e.get("is_paste")
         and not e.get("is_backspace")
+        and is_trusted(e)
     ]
     downs.sort(key=lambda e: e.get("timestamp", 0))
     return downs
