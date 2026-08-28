@@ -97,8 +97,13 @@ last_seen: dict[str, float] = {}
 caep_log: list[dict] = []
 timeline: list[dict] = []
 
+# session_key -> reasons already emitted. One CAEP event per session and
+# reason: a challenge that stays in force is one signal, not one per
+# blocked retry.
+caep_emitted: dict[str, set] = {}
+
 _session_counter = itertools.count(1)
-_STORES = (sessions, score, decisions, last_flags, blocks)
+_STORES = (sessions, score, decisions, last_flags, blocks, caep_emitted)
 
 
 def _client_fallback(flow) -> str:
@@ -168,7 +173,19 @@ def _note(kind: str, key: str, detail: str = "") -> None:
 
 
 def _emit_caep(key: str, reason: str) -> None:
-    evt = caep_policy.event(key, reason)
+    emitted = caep_emitted.setdefault(key, set())
+    if reason in emitted:
+        return
+    emitted.add(reason)
+    # session-revoked is reserved for the hard 403: the session's output
+    # was rejected. A 401 step-up is a challenge, not a revocation — it
+    # maps to a claims change (the required assurance level moved).
+    event_type = (
+        caep_policy.SESSION_REVOKED
+        if reason == "provenance-unjustified"
+        else caep_policy.TOKEN_CLAIMS_CHANGE
+    )
+    evt = caep_policy.event(key, reason, event_type=event_type)
     caep_log.append(evt)
     del caep_log[:-50]
     _note("caep", key, reason)
@@ -352,9 +369,6 @@ class CadenceAddon:
         # cookie must share one id, or one browser becomes two sessions.
         existing = _existing_sid(flow)
         key = existing if existing is not None else new_session_id(next(_session_counter))
-        buffered = sessions.setdefault(key, [])
-        buffered.extend(events)
-        sessions[key] = cap_session(buffered)
         # Detectors run HERE, once per round, on the freshly extended
         # buffer — the only moment new evidence exists. Running them per
         # page request instead re-evaluates the whole buffer every time and
@@ -362,8 +376,14 @@ class CadenceAddon:
         # changes (a second driver dilutes whole-stream automation below
         # its threshold, silently un-firing a signal the walk already
         # counted). SPRT requires evidence to accumulate monotonically.
-        touch(last_seen, key, time.time())
+        # Empty beacons are NOT activity: an events-free heartbeat must not
+        # touch last_seen, or the SDK's idle-tab interval keeps a stolen
+        # sid's buffer alive past the TTL forever.
         if events:
+            buffered = sessions.setdefault(key, [])
+            buffered.extend(events)
+            sessions[key] = cap_session(buffered)
+            touch(last_seen, key, time.time())
             self._accumulate(key, sessions[key])
         # A response set in the request hook short-circuits the proxy:
         # mitmproxy answers locally and nothing is forwarded upstream.

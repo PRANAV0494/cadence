@@ -45,8 +45,11 @@ FALLBACK_RATES = {
     "drift": (0.70, 0.05),
     "provenance": (0.85, 0.01),
     # Engineering estimate, not a measured fixture — malice has no
-    # labelled TPR/FPR in results.json yet.
-    "malice": (0.80, 0.02),
+    # labelled TPR/FPR in results.json yet. The ratio is deliberately
+    # weak: ln(0.60/0.15) = ln 4 ~ 1.39, under the ln 18 ~ 2.89 step-up
+    # bound, so one uncalibrated lexical hit can never be a terminal
+    # 401 by itself — it contributes to the walk, other evidence decides.
+    "malice": (0.60, 0.15),
 }
 
 

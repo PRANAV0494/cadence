@@ -8,6 +8,7 @@ transmitter cannot silently change the event type.
 
 from __future__ import annotations
 
+import hashlib
 import time
 
 # Event types from the CAEP specification (OpenID shared signals).
@@ -17,6 +18,19 @@ SESSION_REVOKED = (
 TOKEN_CLAIMS_CHANGE = (
     "https://schemas.openid.net/secevent/caep/event-type/token-claims-change"
 )
+
+
+def subject_id(session_id: str) -> str:
+    """The CAEP subject for a session key.
+
+    A cookie sid is minted opaque hex and passes through. The connection
+    fallback key is `host|(ip, port)` — a client address, which must not
+    leave the process as a claimed-opaque handle; it is hashed instead.
+    """
+    if "|" not in session_id:
+        return session_id
+    digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+    return "conn-" + digest[:16]
 
 
 def event(
@@ -31,7 +45,7 @@ def event(
     return {
         "iss": "cadence",
         "iat": ts,
-        "sub_id": {"format": "opaque", "id": session_id},
+        "sub_id": {"format": "opaque", "id": subject_id(session_id)},
         "events": {
             event_type: {
                 "event_timestamp": ts,
