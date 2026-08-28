@@ -1,7 +1,10 @@
 # Evaluation
 
-Numbers quoted in markdown must exist in `evaluation/results.json` with a
-source, or CI fails (`evaluation/check_docs.py`).
+Marked claims — numbers wrapped in an HTML-comment span naming a
+`results.json` key — must match `evaluation/results.json` at the shown
+precision, or CI fails (`evaluation/check_docs.py`); the checker also
+rejects a short denylist of retracted literals. Unmarked numerals are
+**not** gated — the marker is what buys the guarantee.
 
 **What is measured today**
 
@@ -12,13 +15,15 @@ source, or CI fails (`evaluation/check_docs.py`).
 
 **What is not a field result**
 
-- `evaluation/harness/streams.py` — labelled synthetic JSONL for
-  `cadence eval`. Not a substitute for agent-framework captures.
-- `evaluation/timer_clamp.py` — timestamp quantization only; it does not
-  invent an EER.
+- `cadence eval <session.jsonl>` (`cadence/eval.py`) replays exactly what
+  it is given and invents nothing; leave-one-agent-out waits for real
+  agent captures.
 
-**Still outstanding (not in this repo yet)**
+**Still outstanding (not on this branch)**
 
+- Labelled synthetic stream harness and browser timer-clamp quantization
+  (planned as `evaluation/harness/streams.py` and
+  `evaluation/timer_clamp.py`; on a sibling branch, not merged here).
 - Recapture of human sessions after the dwell-bug SDK fix.
 - Leave-one-agent-out on real 2026 agent frameworks.
 - Adversarial humanization / statistical forgery round.

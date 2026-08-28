@@ -1,7 +1,11 @@
 # Ethics
 
-CADENCE records **keystroke timing**, not passwords (password fields are
-not gated) and not the pasted *content* (paste events store length only).
+CADENCE's capture SDK listens on the whole document and sends per-key
+`key`/`code` values with timestamps to the proxy — **including characters
+typed into password fields**. Pasted *content* is never sent (paste
+events store length only). Password *form fields* are excluded from the
+provenance 403 gate, but that is a detection fail-open, not a capture
+exclusion: do not describe this as "not recording passwords".
 
 1. **Consent.** Any capture from real people needs informed consent: what is
    collected, how long it is kept, how to withdraw. Timing is behavioural
