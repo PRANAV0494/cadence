@@ -25,6 +25,7 @@ from console import (  # noqa: E402
     replace_state_path,
     snapshot,
 )
+from dump import append_flush  # noqa: E402
 from drift import drift_signal  # noqa: E402
 from fusion import update as fusion_update  # noqa: E402
 from inject import csp_hashes, inject, is_html  # noqa: E402
@@ -385,6 +386,7 @@ class CadenceAddon:
             sessions[key] = cap_session(buffered)
             touch(last_seen, key, time.time())
             self._accumulate(key, sessions[key])
+            append_flush(key, events)
         # A response set in the request hook short-circuits the proxy:
         # mitmproxy answers locally and nothing is forwarded upstream.
         from mitmproxy import http
