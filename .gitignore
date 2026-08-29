@@ -36,6 +36,9 @@ venv/
 *.pem
 samconfig.local.toml
 
+# stills from the recorder; the committed demo is cadence-demo.webm
+docs/demo/*.png
+
 # --- editor / OS ---
 .vscode/
 .idea/

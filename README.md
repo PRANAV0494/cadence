@@ -64,6 +64,9 @@ Unmodified web app ◄───────────────────�
 
 ## Demo
 
+[90-second recording](docs/demo/cadence-demo.webm) — type → allow, paste → 403,
+constant-interval stream → 401, then the live console. Mechanics, not a field TPR.
+
 One command. **Normal browser** — no proxy settings, no special Chrome.
 
 Windows (from the repo):
