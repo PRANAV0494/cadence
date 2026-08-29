@@ -18,12 +18,14 @@ rejects a short denylist of retracted literals. Unmarked numerals are
 - `cadence eval <session.jsonl>` (`cadence/eval.py`) replays exactly what
   it is given and invents nothing; leave-one-agent-out waits for real
   agent captures.
+- `evaluation/harness/streams.py` — labelled synthetic JSONL (jittered
+  human, constant machine, untrusted script, handoff). Fixtures for
+  `cadence eval`, not a substitute for agent-framework captures.
+- `evaluation/timer_clamp.py` — timestamp quantization onto browser
+  grids only. It does not invent an EER.
 
 **Still outstanding**
 
-- Labelled synthetic stream harness and browser timer-clamp quantization
-  (`evaluation/harness/streams.py`, `evaluation/timer_clamp.py`) arrive
-  separately with PR #28 — synthetic-only, not field results.
 - Recapture of human sessions after the dwell-bug SDK fix.
 - Leave-one-agent-out on real 2026 agent frameworks.
 - Adversarial humanization / statistical forgery round.

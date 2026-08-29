@@ -27,7 +27,7 @@ questions about whoever is currently driving the session:
 |---|---|---|
 | **Provenance** | Was the text the server received actually produced by the keystrokes we observed? | Deterministic reconciliation, **server-side at the proxy** |
 | **Identity drift** | Has the driver changed *since login*? | Within-session change-point detection against a per-user baseline |
-| **Automation** | Does the input timing look synthesised? | Gradient-boosted model over timing + provenance features |
+| **Automation** | Does the input timing look synthesised? | Interval regularity (CV + unique-fraction) on trusted character keydowns |
 
 Evidence from each is combined by a **calibrated sequential log-likelihood-ratio accumulator**
 (Wald's SPRT), so thresholds derive from a target error rate rather than hand-tuned weights — and
@@ -81,7 +81,9 @@ cadence demo
 
 Then open **http://127.0.0.1:8080/** in Chrome / Edge / Firefox the way you
 already use it. Console: **http://127.0.0.1:8080/__cadence/console**.
-If 8080 is taken: `cadence demo --port 8787`.
+If 8080 is taken (including by VS Code auto-forward): `cadence demo --port 9000`.
+Turn off **Remote: Auto Forward Ports** or the editor will steal the port
+before mitmdump binds.
 
 `cadence proxy` still exists for the lab forward-proxy path (browser must
 be pointed at the proxy, HTTPS needs the mitmproxy CA). You do not need
@@ -101,14 +103,18 @@ measurement source; the demo shows mechanics, not performance.
 
 ## Honest status
 
-**What works today:** the feature extractor (34 timing features, pure stdlib), a deployed
+**What works today:** `cadence demo` in a normal browser (provenance 403, automation
+401, live console); untrusted keydowns ignored; idle session TTL; CAEP-shaped log
+events; lexical malice as a weak SPRT input; Wald SPRT fusion; RFC 9470 step-up;
+`cadence eval` replay; synthetic harness streams and timer-clamp quantization
+(fixtures, not field rates). Also the 34-feature extractor, a deployed
 FastAPI/Lambda/DynamoDB collection backend, per-user identity baselines on <!--@cmu_subjects-->51<!--/--> CMU subjects, and one
-CPU-loadable network model.
+CPU-loadable network model that is **not** on the live proxy path.
 
-**What's being rebuilt:** the capture SDK (a key-matching bug corrupted all dwell-derived features —
-<!--@legacy_export_negative_dwell_fraction-->85%<!--/--> of recorded human dwell times are negative), the proxy edge (the original Burp extension doesn't
-load), the fusion layer (hand-tuned constants), and the evaluation harness (it scored HTTP responses,
-not predictions).
+**Still outstanding:** recapture of humans with the rewritten SDK; leave-one-agent-out
+on real 2026 agent frameworks; adversarial humanization. The dwell-bug export is still
+bad (<!--@legacy_export_negative_dwell_fraction-->85%<!--/--> of recorded human dwell times are negative); `models/automation/`
+measures that bug. The Burp extension still doesn't load — the live edge is mitmproxy.
 
 **Current keystroke baseline, and the one it loses to:**
 
