@@ -18,6 +18,7 @@ tabs in ways a peer address does not mean "user session".
 from __future__ import annotations
 
 import re
+import secrets
 from urllib.parse import parse_qs
 
 from trusted import is_trusted
@@ -79,15 +80,14 @@ def new_session_id(seed: int | None = None) -> str:
     """A fresh opaque session id.
 
     Crypto-random by default (128-bit). The optional seed keeps a
-    deterministic form for tests only; production call sites omit it.
+    deterministic form for tests only (masked to 64 bits so the result
+    always passes the session_key allowlist); production call sites omit it.
     Sequential hex ids are guessable and let one browser claim another
     session's buffered keystrokes within the TTL.
     """
-    import secrets as _secrets
-
     if seed is not None:
-        return f"{seed:016x}"
-    return _secrets.token_hex(16)
+        return f"{seed & 0xFFFFFFFFFFFFFFFF:016x}"
+    return secrets.token_hex(16)
 
 
 def post_has_text(body: bytes, content_type: str | None) -> bool:

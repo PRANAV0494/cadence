@@ -156,7 +156,9 @@ def _set_cookie_if_absent(response, flow) -> None:
 
 
 def _add_set_cookie(response, sid: str) -> None:
-    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax"
+    # HttpOnly: page JS never reads __cadence_sid (the browser attaches it
+    # automatically), so script access is pure attack surface for fixation.
+    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax; HttpOnly"
     add = getattr(response.headers, "add", None)
     if callable(add):
         add("Set-Cookie", set_cookie)

@@ -28,6 +28,11 @@ def test_seeded_form_stays_deterministic_for_tests():
     assert new_session_id(1) == new_session_id(1)
 
 
+def test_huge_seed_still_passes_cookie_allowlist():
+    sid = new_session_id(2**100)
+    assert session_key(f"__cadence_sid={sid}", "fb") == sid
+
+
 def test_oversized_cookie_falls_back():
     assert session_key("__cadence_sid=" + "a" * 200, "fb") == "fb"
 
