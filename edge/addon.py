@@ -7,7 +7,6 @@ Run via `cadence proxy`, or directly:
 
 from __future__ import annotations
 
-import itertools
 import json
 import sys
 import time
@@ -99,7 +98,10 @@ timeline: list[dict] = []
 # Bound the session table: per-session events are already capped by
 # cap_session, but the session COUNT was unbounded — one beacon without a
 # cookie mints one sid, so a scanner could grow every store forever.
-# Oldest-idle session is evicted to make room.
+# Oldest-idle session is evicted to make room. Worst case is still
+# MAX_SESSIONS * per-session cap events; demo operators expecting abuse
+# can lower this (tests monkeypatch it). Disk under CADENCE_DUMP_DIR grows
+# one file per session; the dump path truncates each flush the same way.
 MAX_SESSIONS = 1000
 
 # Bound a single telemetry flush: a 10 MB JSON body must not become
@@ -112,7 +114,6 @@ MAX_EVENTS_PER_FLUSH = 10_000
 # blocked retry.
 caep_emitted: dict[str, set] = {}
 
-_session_counter = itertools.count(1)
 _STORES = (sessions, score, decisions, last_flags, blocks, caep_emitted)
 
 
@@ -183,12 +184,14 @@ def _set_cookie_if_absent(response, flow) -> None:
     """
     if _existing_sid(flow) is not None:
         return
-    sid = new_session_id(next(_session_counter))
+    sid = new_session_id()
     _add_set_cookie(response, sid)
 
 
 def _add_set_cookie(response, sid: str) -> None:
-    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax"
+    # HttpOnly: page JS never reads __cadence_sid (the browser attaches it
+    # automatically), so script access is pure attack surface for fixation.
+    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax; HttpOnly"
     add = getattr(response.headers, "add", None)
     if callable(add):
         add("Set-Cookie", set_cookie)
@@ -398,7 +401,7 @@ class CadenceAddon:
         # beat the first HTML response), the buffer and the newly issued
         # cookie must share one id, or one browser becomes two sessions.
         existing = _existing_sid(flow)
-        key = existing if existing is not None else new_session_id(next(_session_counter))
+        key = existing if existing is not None else new_session_id()
         if len(events) > MAX_EVENTS_PER_FLUSH:
             events = events[-MAX_EVENTS_PER_FLUSH:]
         # Detectors run HERE, once per round, on the freshly extended

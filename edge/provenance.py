@@ -18,6 +18,7 @@ tabs in ways a peer address does not mean "user session".
 from __future__ import annotations
 
 import re
+import secrets
 from urllib.parse import parse_qs
 
 from trusted import is_trusted
@@ -60,19 +61,33 @@ TEXT_FIELDS = (
 _HAS_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 
 
+_SID_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
 def session_key(cookie_header: str | None, fallback: str) -> str:
     """The __cadence_sid cookie value, or the connection fallback."""
     if cookie_header:
         for part in cookie_header.split(";"):
             name, _, value = part.strip().partition("=")
             if name == SESSION_COOKIE and value:
-                return value
+                value = value.strip()
+                if _SID_RE.fullmatch(value):
+                    return value
     return fallback
 
 
-def new_session_id(seed: int) -> str:
-    """A fresh opaque session id from a caller-supplied entropy source."""
-    return f"{seed:016x}"
+def new_session_id(seed: int | None = None) -> str:
+    """A fresh opaque session id.
+
+    Crypto-random by default (128-bit). The optional seed keeps a
+    deterministic form for tests only (masked to 64 bits so the result
+    always passes the session_key allowlist); production call sites omit it.
+    Sequential hex ids are guessable and let one browser claim another
+    session's buffered keystrokes within the TTL.
+    """
+    if seed is not None:
+        return f"{seed & 0xFFFFFFFFFFFFFFFF:016x}"
+    return secrets.token_hex(16)
 
 
 def post_has_text(body: bytes, content_type: str | None) -> bool:
