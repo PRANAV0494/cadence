@@ -44,6 +44,11 @@ def dwells_ms(events: list[dict]) -> list[float]:
             continue
         et = e.get("event_type")
         seq = e.get("seq")
+        if seq is None:
+            # Unpaired keyup (capture started mid-press) or a seq-less
+            # synthetic event: no down to pair with, and None would collide
+            # every such event onto one dict slot.
+            continue
         if et == "keydown":
             downs[seq] = e
         elif et == "keyup":

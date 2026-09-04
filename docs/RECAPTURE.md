@@ -42,8 +42,8 @@ Never `git add data/private/`.
 Auto-forward off in VS Code (`Remote: Auto Forward Ports`).
 
 ```powershell
-cd "C:\Users\prana\OneDrive\Desktop\COLLEGE PROJECTS\CADENCE"
-& ".\.venv\Scripts\Activate.ps1"
+cd <repo-root>  # the CADENCE checkout, e.g. .\CADENCE on Windows
+& ".\.venv\Scripts\Activate.ps1"  # Windows; on macOS/Linux: source .venv/bin/activate
 New-Item -ItemType Directory -Force -Path ".\data\private\recapture" | Out-Null
 $env:CADENCE_DUMP_DIR = (Resolve-Path ".\data\private\recapture").Path
 .\.venv\Scripts\cadence.exe demo --port 9000

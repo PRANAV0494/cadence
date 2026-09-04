@@ -386,7 +386,12 @@ class CadenceAddon:
             sessions[key] = cap_session(buffered)
             touch(last_seen, key, time.time())
             self._accumulate(key, sessions[key])
-            append_flush(key, events)
+            # Recapture dump must never break the telemetry ack: a bad
+            # CADENCE_DUMP_DIR (file path, perms, full disk) fails open.
+            try:
+                append_flush(key, events)
+            except OSError:
+                pass
         # A response set in the request hook short-circuits the proxy:
         # mitmproxy answers locally and nothing is forwarded upstream.
         from mitmproxy import http

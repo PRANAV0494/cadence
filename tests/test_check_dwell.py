@@ -25,13 +25,8 @@ def _pair(seq, key, t_down, dwell):
 
 
 def test_dwells_pair_by_seq_not_order():
-    # Rollover: press b before releasing a.
-    events = [
-        *_pair(0, "a", 0.0, 80.0),
-        *_pair(1, "b", 30.0, 50.0),
-    ]
-    # Interleaved in time: a down, b down, a up, b up already in _pair
-    # stacked; rebuild overlapped.
+    # Rollover: press b before releasing a. Interleaved in time: a down,
+    # b down, a up, b up.
     events = [
         {"event_type": "keydown", "seq": 0, "key": "a", "timestamp": 0.0,
          "is_modifier": False, "is_paste": False, "is_backspace": False},
@@ -69,3 +64,13 @@ def test_report_fails_negative_dwell_bug(tmp_path):
     assert r["ok"] is False
     assert r["median_ms"] < 0
     assert main([str(p)]) == 1
+
+
+def test_seq_none_events_are_skipped():
+    base = {"key": "a", "is_modifier": False, "is_paste": False, "is_backspace": False}
+    events = [
+        {**base, "event_type": "keydown", "seq": None, "timestamp": 0.0},
+        {**base, "event_type": "keyup", "seq": None, "timestamp": 80.0},
+        *_pair(0, "a", 100.0, 70.0),
+    ]
+    assert dwells_ms(events) == [70.0]
