@@ -7,7 +7,6 @@ Run via `cadence proxy`, or directly:
 
 from __future__ import annotations
 
-import itertools
 import json
 import sys
 import time
@@ -102,7 +101,6 @@ timeline: list[dict] = []
 # blocked retry.
 caep_emitted: dict[str, set] = {}
 
-_session_counter = itertools.count(1)
 _STORES = (sessions, score, decisions, last_flags, blocks, caep_emitted)
 
 
@@ -153,7 +151,7 @@ def _set_cookie_if_absent(response, flow) -> None:
     """
     if _existing_sid(flow) is not None:
         return
-    sid = new_session_id(next(_session_counter))
+    sid = new_session_id()
     _add_set_cookie(response, sid)
 
 
@@ -368,7 +366,7 @@ class CadenceAddon:
         # beat the first HTML response), the buffer and the newly issued
         # cookie must share one id, or one browser becomes two sessions.
         existing = _existing_sid(flow)
-        key = existing if existing is not None else new_session_id(next(_session_counter))
+        key = existing if existing is not None else new_session_id()
         # Detectors run HERE, once per round, on the freshly extended
         # buffer — the only moment new evidence exists. Running them per
         # page request instead re-evaluates the whole buffer every time and
