@@ -92,10 +92,20 @@ blocks: dict[str, int] = {}
 
 # session_key -> last activity unix time. Idle keys are dropped by ttl.expire.
 last_seen: dict[str, float] = {}
-
 # Recent CAEP-shaped events and console timeline (capped).
 caep_log: list[dict] = []
 timeline: list[dict] = []
+
+# Bound the session table: per-session events are already capped by
+# cap_session, but the session COUNT was unbounded — one beacon without a
+# cookie mints one sid, so a scanner could grow every store forever.
+# Oldest-idle session is evicted to make room.
+MAX_SESSIONS = 1000
+
+# Bound a single telemetry flush: a 10 MB JSON body must not become
+# 10 MB of buffered events in one request. Equal to the per-session cap so
+# one flush can fill but never exceed what one session holds.
+MAX_EVENTS_PER_FLUSH = 10_000
 
 # session_key -> reasons already emitted. One CAEP event per session and
 # reason: a challenge that stays in force is one signal, not one per
@@ -104,6 +114,26 @@ caep_emitted: dict[str, set] = {}
 
 _session_counter = itertools.count(1)
 _STORES = (sessions, score, decisions, last_flags, blocks, caep_emitted)
+
+
+def _evict_if_full(key: str) -> None:
+    """Make room for a new session id when the table is full.
+
+    Evicts the oldest-idle session (by last_seen) from every per-session
+    store. Existing keys are never evicted by their own traffic.
+    """
+    if key in sessions or key in last_seen:
+        return
+    if len(last_seen) < MAX_SESSIONS and len(sessions) < MAX_SESSIONS:
+        return
+    oldest = min(last_seen, key=last_seen.get) if last_seen else None
+    if oldest is None:
+        oldest = next(iter(sessions), None)
+    if oldest is None:
+        return
+    last_seen.pop(oldest, None)
+    for store in _STORES:
+        store.pop(oldest, None)
 
 
 def _client_fallback(flow) -> str:
@@ -369,6 +399,8 @@ class CadenceAddon:
         # cookie must share one id, or one browser becomes two sessions.
         existing = _existing_sid(flow)
         key = existing if existing is not None else new_session_id(next(_session_counter))
+        if len(events) > MAX_EVENTS_PER_FLUSH:
+            events = events[-MAX_EVENTS_PER_FLUSH:]
         # Detectors run HERE, once per round, on the freshly extended
         # buffer — the only moment new evidence exists. Running them per
         # page request instead re-evaluates the whole buffer every time and
@@ -380,6 +412,7 @@ class CadenceAddon:
         # touch last_seen, or the SDK's idle-tab interval keeps a stolen
         # sid's buffer alive past the TTL forever.
         if events:
+            _evict_if_full(key)
             buffered = sessions.setdefault(key, [])
             buffered.extend(events)
             sessions[key] = cap_session(buffered)
