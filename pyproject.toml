@@ -1,3 +1,12 @@
+[build-system]
+# PEP 639 `license` / `license-files` need setuptools >= 77.0.3. Without this
+# table, pip's legacy fallback happened to provision a current setuptools in
+# the isolated build env and the keys worked by luck; --no-build-isolation
+# against this repo's own .venv (setuptools 65.5.0) failed with
+# "`project.license` must be valid exactly by one definition".
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "cadence"
 version = "0.1.0"

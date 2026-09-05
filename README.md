@@ -164,9 +164,10 @@ version is in the same folder).
 **Quoted numbers are verified by CI.** Every measured value in this documentation is wrapped in a
 marker naming a key in [`evaluation/results.json`](evaluation/results.json). `check_docs.py` fails
 the build when a document and its measurement disagree, and rejects digits smuggled just outside a
-marker to inflate displayed precision. 45 claims are gated this way. The checker's first version
-was defeated by its own pull request; [`tests/test_check_docs.py`](tests/test_check_docs.py) carries
-one named regression test per hole found since.
+marker to inflate displayed precision. It prints the count of gated claims on each run. The
+checker's first version was defeated by its own pull request;
+[`tests/test_check_docs.py`](tests/test_check_docs.py) carries one named regression test per hole
+found since.
 
 **Privacy is enforced by the pipeline, not by discipline.** Separate CI guards reject any commit
 that adds participant data, a redistributed dataset, an unexpected model blob, a tracked env file,
@@ -178,9 +179,13 @@ or a retracted statistic — because `.gitignore` does not survive `git add -f`,
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 302 tests
+pytest
 python evaluation/check_docs.py
 ```
+
+Both print their own totals. Quoting those totals here would put two unverified
+numbers inside the section arguing that quoted numbers are verified — and
+`check_docs.py` gates marked claims only, so it would not catch them going stale.
 
 ## License
 

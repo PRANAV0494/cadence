@@ -50,7 +50,12 @@ Source folders are **untouched** — everything here is a copy. 13 MB total (vs 
 > **Scope of the fixes above:** they apply to this repository only. The pre-consolidation
 > source folders are unchanged and still contain the original values. Those folders are
 > local-only — not git repositories, never pushed, and no corresponding remote exists — so
-> nothing was published, but they are cleaned or retired separately from this tree.
+> the credentials were **never published via source control**, which is what `git log --all -S`
+> across every repository on the machine actually establishes. It says nothing about the
+> deployed artifacts that carried the same values: a Lambda environment variable and a
+> CloudFormation stack were readable by anyone with access to that AWS account. Both are now
+> retired — the Firebase site is disabled and the AWS account is closed, with its contents
+> scheduled for deletion by AWS on 2026-12-01.
 
 ## Data handling
 
