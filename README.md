@@ -2,8 +2,8 @@
 
 **Continuous attestation of *who is driving* an authenticated web session.**
 
-> ⚠️ **Status: early research prototype, under active development.** Nothing here is production
-> ready, and the numbers below are baselines being re-measured — see [Honest status](#honest-status).
+> **Research prototype, under active development.** Not production software — see
+> [Status](#status) for what works today and what is still outstanding.
 
 ---
 
@@ -104,7 +104,7 @@ No accuracy numbers are quoted here beyond what
 [evaluation/results.json](evaluation/results.json) records with its
 measurement source; the demo shows mechanics, not performance.
 
-## Honest status
+## Status
 
 **What works today:** `cadence demo` in a normal browser (provenance 403, automation
 401, live console); untrusted keydowns ignored; idle session TTL; CAEP-shaped log
@@ -119,7 +119,10 @@ on real 2026 agent frameworks; adversarial humanization. The dwell-bug export is
 bad (<!--@legacy_export_negative_dwell_fraction-->85%<!--/--> of recorded human dwell times are negative); `models/automation/`
 measures that bug. The Burp extension still doesn't load — the live edge is mitmproxy.
 
-**Current keystroke baseline, and the one it loses to:**
+**Identity component — the current baseline, and the one it loses to.** This table scores the
+per-user identity model alone against a published benchmark on the same subjects. It is a
+calibration reproduction, not a measurement of the system described above: proxy-side provenance
+reconciliation and SPRT fusion have no row here, and no field result is claimed for them either.
 
 | Method | Dataset | EER | n |
 |---|---|---|---|
@@ -152,9 +155,33 @@ Not a claim that AI agents are reliably detectable in general.
 
 ## Repository layout
 
-See [`MANIFEST.md`](MANIFEST.md) for the origin of every file and [`docs/CADENCE_PLAN.md`](docs/)
-for the full design and build plan (a Hinglish version is in the same folder).
+See [`MANIFEST.md`](MANIFEST.md) for the origin of every file and
+[`docs/CADENCE_PLAN.md`](docs/CADENCE_PLAN.md) for the full design and build plan (a Hinglish
+version is in the same folder).
+
+## Engineering practices
+
+**Quoted numbers are verified by CI.** Every measured value in this documentation is wrapped in a
+marker naming a key in [`evaluation/results.json`](evaluation/results.json). `check_docs.py` fails
+the build when a document and its measurement disagree, and rejects digits smuggled just outside a
+marker to inflate displayed precision. 45 claims are gated this way. The checker's first version
+was defeated by its own pull request; [`tests/test_check_docs.py`](tests/test_check_docs.py) carries
+one named regression test per hole found since.
+
+**Privacy is enforced by the pipeline, not by discipline.** Separate CI guards reject any commit
+that adds participant data, a redistributed dataset, an unexpected model blob, a tracked env file,
+or a retracted statistic — because `.gitignore` does not survive `git add -f`, and an early blanket
+`git add -A` came close to publishing identified keystroke records from real participants.
+
+**Baselines this work loses to are stated, and stay stated until the gap closes**
+([`CONTRIBUTING.md`](CONTRIBUTING.md)).
+
+```bash
+pip install -e ".[dev]"
+pytest          # 302 tests
+python evaluation/check_docs.py
+```
 
 ## License
 
-TBD.
+[Apache-2.0](LICENSE). Dataset and dependency attribution is in [`NOTICE`](NOTICE).
