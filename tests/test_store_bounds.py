@@ -126,3 +126,98 @@ def test_existing_session_never_evicts_itself(monkeypatch):
     addon.addons[0].request(_telemetry_flow(cookie="__cadence_sid=a", events=[KEYDOWN]))
 
     assert "a" in addon.sessions
+
+
+def _form_flow(port=54321, ip="127.0.0.1"):
+    """A cookieless text-bearing form POST: takes the provenance block path."""
+    flow = _Flow(
+        _Request(
+            "/submit",
+            b"message=hello",
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+    )
+
+    class _Conn:
+        peername = (ip, port)
+
+    flow.client_conn = _Conn()
+    return flow
+
+
+def _clear(addon):
+    for store in (
+        addon.sessions,
+        addon.score,
+        addon.decisions,
+        addon.last_flags,
+        addon.blocks,
+        addon.caep_emitted,
+        addon.last_seen,
+    ):
+        store.clear()
+
+
+def test_block_path_is_bounded_and_expirable(monkeypatch):
+    """The leak this PR missed.
+
+    blocks and caep_emitted are written on the provenance/step-up block
+    paths. Before the fix those paths called neither _evict_if_full nor
+    touch(last_seen), and expire() iterates last_seen — so a cookieless
+    scanner grew both stores forever with MAX_SESSIONS set to 10.
+    """
+    addon = _load_addon()
+    _clear(addon)
+    _fake_mitmproxy(monkeypatch)
+    monkeypatch.setattr(addon, "MAX_SESSIONS", 10)
+
+    # Distinct client IPs, so each POST really is a distinct session key.
+    # Varying only the port would collapse to one key under the fallback fix
+    # and the test would pass without the eviction fix doing anything.
+    for i in range(200):
+        addon.addons[0].request(_form_flow(ip=f"10.0.{i // 256}.{i % 256}"))
+
+    assert addon.blocks, "expected the provenance gate to have blocked"
+    assert len(addon.blocks) <= addon.MAX_SESSIONS, len(addon.blocks)
+    assert len(addon.caep_emitted) <= addon.MAX_SESSIONS, len(addon.caep_emitted)
+    # Every blocked key is in last_seen, so the TTL can actually reclaim it.
+    assert set(addon.blocks) <= set(addon.last_seen)
+
+    addon.addons[0].request(_form_flow(ip="10.9.9.9"))
+    from ttl import expire  # noqa: E402
+
+    expire(addon.last_seen[list(addon.last_seen)[0]] + 86_400,
+           addon.last_seen, list(addon._STORES))
+    assert addon.blocks == {}, "TTL did not reclaim blocked keys"
+    assert addon.caep_emitted == {}
+
+
+def test_fallback_key_ignores_ephemeral_port(monkeypatch):
+    """One client, many connections, one key — not one key per TCP connection."""
+    addon = _load_addon()
+    _clear(addon)
+    _fake_mitmproxy(monkeypatch)
+
+    for port in range(50):
+        addon.addons[0].request(_form_flow(port=port))
+
+    assert len(addon.last_seen) == 1, addon.last_seen
+
+
+def test_oversized_body_is_rejected_before_parsing(monkeypatch):
+    """The byte bound, not the event cap, is what caps peak memory."""
+    addon = _load_addon()
+    _clear(addon)
+    _fake_mitmproxy(monkeypatch)
+
+    huge = b"x" * (addon.MAX_TELEMETRY_BODY_BYTES + 1)
+    flow = _Flow(
+        _Request("/__cadence/telemetry", huge, headers={"cookie": "__cadence_sid=big"})
+    )
+
+    def _boom(*a, **k):  # noqa: ANN001
+        raise AssertionError("json.loads ran on an oversized body")
+
+    monkeypatch.setattr(addon.json, "loads", _boom)
+    addon.addons[0].request(flow)
+    assert "big" not in addon.sessions
