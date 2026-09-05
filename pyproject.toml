@@ -3,6 +3,8 @@ name = "cadence"
 version = "0.1.0"
 description = "Continuous attestation of who is driving an authenticated web session"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 # Kept in step with deploy/requirements.txt, which is what CI and Lambda
 # install. An empty list meant `pip install .` produced import errors.
 dependencies = [
