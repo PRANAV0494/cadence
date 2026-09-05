@@ -34,9 +34,9 @@ Source folders are **untouched** — everything here is a copy. 13 MB total (vs 
 
 | What | Size | Why |
 |---|---|---|
-| 153 per-user `.pkl` models | **224 MB** | Regenerable in **13.86 s** (your own notebook output). Copied the `*_metadata.json` instead — those hold each user's EER and threshold. |
+| 153 per-user `.pkl` models | **224 MB** | Regenerable in **13.86 s** (measured, notebook output). Copied the `*_metadata.json` instead — those hold each user's EER and threshold. |
 | BETH / Bot-IoT / CTU-13 / IoT-23 / UNSW-NB15 models | ~350 MB | Wrong data domain — eBPF kernel telemetry and IoT netflow don't describe a browser talking HTTPS to a web app. Also 4 of 6 scalers are cuML (fail on CPU), and UNSW-NB15's saved feature list is corrupt (~119 of 160 "names" are data values). |
-| `FINALLL/security_logs.json` | 2.2 MB | **Your real browsing history**, including Google autocomplete captured keystroke-by-keystroke. |
+| `FINALLL/security_logs.json` | 2.2 MB | Personal browsing capture from development. Excluded on privacy grounds. |
 | `checkpoints/` | 1.3 GB | Regenerable intermediates. |
 | `lambda_package/`, `packages/`, `deploy-full.zip`, `.aws-sam/` | ~165 MB | Two duplicate vendored dependency trees + build output. |
 | `attack_mapper.py`, `attack_logger.py`, `risk_calculator.py`, `debug_*.py` | — | Never imported, or duplicate logic that disagrees with `risk_engine.py`. |
@@ -47,18 +47,22 @@ Source folders are **untouched** — everything here is a copy. 13 MB total (vs 
 2. **`deploy/template.yaml`** — removed the `Default:` values for `JwtSecretKey`, `AdminUsername`, and `AdminPasswordHash`. They were CloudFormation *parameter defaults*, so `sam deploy` without an override shipped them as the production signing key. Now the deploy fails unless you pass real values.
 3. **`.gitignore`** covers `data/private/`, all `*.pkl`/`*.joblib` (except the two small network models), datasets, and build junk.
 
-> **Still on you:** the original folders are unchanged, so those secrets are still in
-> `keystroke/backend/app/auth.py`, `keystroke/backend/template.yaml`, and
-> `keystroke/docs/PROJECT_DOCUMENTATION.md` (lines ~19-20, 498, 719). **Rotate the actual password and
-> JWT secret on the live deployment** — scrubbing a copy doesn't undo a key that's already public.
+> **Scope of the fixes above:** they apply to this repository only. The pre-consolidation
+> source folders are unchanged and still contain the original values. Those folders are
+> local-only — not git repositories, never pushed, and no corresponding remote exists — so
+> nothing was published, but they are cleaned or retired separately from this tree.
 
-## Data that needs handling before any commit
+## Data handling
 
-`data/private/keystroke_export_20260513.csv` — 593 rows, real first-and-last names of <!--@participants_collected-->49<!--/--> participants.
-Gitignored, but pseudonymise to stable hashes and keep the mapping outside the repo. You need the
-consent/ethics note for the thesis anyway.
+`data/private/` holds the pre-consolidation participant export and is gitignored; a CI guard
+(`.github/workflows/ci.yml`, "No participant data") rejects any commit that adds it, since
+`.gitignore` alone does not survive `git add -f`. Timing data is behavioural biometric data and
+carries the consent and retention obligations set out in [`docs/ETHICS.md`](docs/ETHICS.md).
 
-**Also — this file contains the dwell-time bug.** Verified directly:
+**Outstanding:** the export still carries an identifying name column. It must be pseudonymised
+to stable hashes, with the mapping held outside the repository, before any further use.
+
+**That export is also where the dwell-time bug was measured.** Verified directly:
 
 | Group | n | median mean_dwell | % negative |
 |---|---|---|---|

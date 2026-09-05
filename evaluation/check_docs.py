@@ -5,10 +5,15 @@ evaluation/results.json.
 
 WHY THIS EXISTS
 ---------------
-A fabricated statistic once travelled from a notebook into a CV and onto a
-public profile, and stayed there for months, because nothing connected the claim
-to the computation that supposedly produced it. The number was p = 4.7e-21, from
-a cell that t-tested a vector against itself scaled by 1.1.
+A fabricated statistic once travelled from a notebook onto this author's live
+public profile, because nothing connected the claim to the computation that
+supposedly produced it. The number was p = 4.7e-21, from a notebook cell that
+t-tested a vector against itself scaled by 1.1 — arithmetic, not evidence.
+
+It was caught about half an hour later, by an audit of the author's own prior
+work, and retracted the same hour. Half an hour is luck. Nothing in the pipeline
+would have stopped it, and nothing would have flagged it on day ninety either.
+This file is what replaces the luck.
 
 CONTRIBUTING.md asks for measurement honesty. This makes it mechanical.
 

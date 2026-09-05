@@ -51,8 +51,8 @@ jobs:
 
       # Every measured number quoted in the documentation must match
       # evaluation/results.json. A fabricated p-value once travelled from a
-      # notebook into a CV and onto a public profile because nothing connected
-      # the claim to the computation. This makes that connection mechanical.
+      # notebook onto a live public profile because nothing connected the claim
+      # to the computation. This makes that connection mechanical.
       - name: Documentation matches measured results
         run: python evaluation/check_docs.py
 
