@@ -26,6 +26,7 @@ rejects a short denylist of retracted literals. Unmarked numerals are
 
 **Still outstanding**
 
-- Recapture of human sessions after the dwell-bug SDK fix.
+- Recapture of human sessions after the dwell-bug SDK fix
+  (`docs/RECAPTURE.md`).
 - Leave-one-agent-out on real 2026 agent frameworks.
 - Adversarial humanization / statistical forgery round.
