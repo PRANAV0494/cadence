@@ -61,11 +61,24 @@ TEXT_FIELDS = (
 _HAS_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 
 
-_SID_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+# Dots are allowed so an id can carry a version or suffix later, but a value
+# made only of dots is rejected: "." and ".." are path components, and a sid
+# reaching a filesystem or log path is exactly how that becomes a traversal.
+# Nothing today joins a sid to a path (dump.filename("..") yields
+# "session.jsonl"), so this closes the primitive rather than a live bug.
+_SID_RE = re.compile(r"(?!\.+$)[A-Za-z0-9._-]{1,64}")
 
 
 def session_key(cookie_header: str | None, fallback: str) -> str:
-    """The __cadence_sid cookie value, or the connection fallback."""
+    """The __cadence_sid cookie value, or the connection fallback.
+
+    The cookie is entirely attacker-supplied: nothing here verifies the proxy
+    ever minted this value. The allowlist bounds its *shape*, not its origin.
+    Unguessability of new_session_id is therefore the whole defence against
+    claiming another live session's buffered keystrokes — not a hardening
+    layer over some other check. Binding minted ids server-side would be the
+    real fix and is not implemented.
+    """
     if cookie_header:
         for part in cookie_header.split(";"):
             name, _, value = part.strip().partition("=")
@@ -76,17 +89,16 @@ def session_key(cookie_header: str | None, fallback: str) -> str:
     return fallback
 
 
-def new_session_id(seed: int | None = None) -> str:
-    """A fresh opaque session id.
+def new_session_id() -> str:
+    """A fresh opaque session id: 128 bits from secrets.token_hex.
 
-    Crypto-random by default (128-bit). The optional seed keeps a
-    deterministic form for tests only (masked to 64 bits so the result
-    always passes the session_key allowlist); production call sites omit it.
-    Sequential hex ids are guessable and let one browser claim another
-    session's buffered keystrokes within the TTL.
+    Sequential hex ids were guessable, which let one browser claim another
+    session's buffered keystrokes within the TTL. Since session_key validates
+    only shape and not origin, this randomness is the entire barrier — see
+    that docstring. Tests that need determinism monkeypatch secrets.token_hex
+    rather than taking a seed argument here; a test-only parameter on a
+    security primitive is a production call site waiting to happen.
     """
-    if seed is not None:
-        return f"{seed & 0xFFFFFFFFFFFFFFFF:016x}"
     return secrets.token_hex(16)
 
 

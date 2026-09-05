@@ -158,6 +158,12 @@ def _set_cookie_if_absent(response, flow) -> None:
 def _add_set_cookie(response, sid: str) -> None:
     # HttpOnly: page JS never reads __cadence_sid (the browser attaches it
     # automatically), so script access is pure attack surface for fixation.
+    # Verified: cadence-sdk.js does not touch document.cookie.
+    #
+    # No Secure attribute, deliberately: the demo and lab paths are
+    # http://127.0.0.1, and Secure would stop the cookie being set there
+    # at all. Any deployment terminating TLS must add it — without Secure
+    # the sid crosses the network in clear on a downgraded request.
     set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax; HttpOnly"
     add = getattr(response.headers, "add", None)
     if callable(add):
