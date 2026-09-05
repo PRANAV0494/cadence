@@ -18,6 +18,12 @@ data/aalto/
 
 # --- build junk ---
 __pycache__/
+# setuptools leaves a stale copy of the whole tree under build/lib/, which sat
+# inside `git add -A` range. Given this repo's guards exist because a blanket
+# stage nearly published participant data, an untracked mirror of the source
+# tree should not be one.
+build/
+*.egg-info/
 *.py[cod]
 .pytest_cache/
 .aws-sam/

@@ -1,0 +1,36 @@
+CADENCE
+Copyright 2026 Pranav Maheshwari
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+--------------------------------------------------------------------------
+Third-party data and models
+--------------------------------------------------------------------------
+
+CMU DSL-StrongPasswordData
+  Killourhy, K.S. and Maxion, R.A. "Comparing Anomaly-Detection Algorithms
+  for Keystroke Dynamics." DSN 2009, pp. 125-134.
+  The dataset is NOT redistributed here — `data/` is gitignored and a CI
+  guard rejects any commit that adds it. Identity results in
+  evaluation/results.json are computed against a locally obtained copy.
+
+CICIDS2017
+  Sharafaldin, I., Lashkari, A.H. and Ghorbani, A.A. "Toward Generating a
+  New Intrusion Detection Dataset and Intrusion Traffic Characterization."
+  ICISSP 2018.
+  The committed artifacts models/network/cicids2017_scaler.pkl and
+  models/network/cicids2017_xgboost_model.pkl are weights derived from this
+  dataset, which the University of New Brunswick Canadian Institute for
+  Cybersecurity requires be cited on use. These artifacts are not on the
+  live proxy path (see docs/LIMITATIONS.md).
+
+--------------------------------------------------------------------------
+Dependencies
+--------------------------------------------------------------------------
+
+mitmproxy, FastAPI, Mangum, pydantic, uvicorn, boto3, python-jose, passlib
+and bcrypt are installed as dependencies, not vendored. Their licenses
+apply to their own distributions.
+
+Chart.js 4.4.1 is referenced from a CDN in console/index.html; no Chart.js
+source is included in this repository.
