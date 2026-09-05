@@ -7,7 +7,6 @@ Run via `cadence proxy`, or directly:
 
 from __future__ import annotations
 
-import itertools
 import json
 import sys
 import time
@@ -30,6 +29,7 @@ from fusion import update as fusion_update  # noqa: E402
 from inject import csp_hashes, inject, is_html  # noqa: E402
 from malice import suspicious  # noqa: E402
 from provenance import (  # noqa: E402
+    MAX_EVENTS_PER_SESSION,
     SESSION_COOKIE,
     cap_session,
     new_session_id,
@@ -92,22 +92,75 @@ blocks: dict[str, int] = {}
 
 # session_key -> last activity unix time. Idle keys are dropped by ttl.expire.
 last_seen: dict[str, float] = {}
-
 # Recent CAEP-shaped events and console timeline (capped).
 caep_log: list[dict] = []
 timeline: list[dict] = []
+
+# Bound the session table: per-session events are already capped by
+# cap_session, but the session COUNT was unbounded — one beacon without a
+# cookie mints one sid, so a scanner could grow every store forever.
+# Oldest-idle session is evicted to make room. Worst case is still
+# MAX_SESSIONS * per-session cap events; demo operators expecting abuse
+# can lower this (tests monkeypatch it). Disk under CADENCE_DUMP_DIR grows
+# one file per session; the dump path truncates each flush the same way.
+MAX_SESSIONS = 1000
+
+# Bound a single telemetry flush. Retention was already bounded before this
+# PR — cap_session truncates to the same limit two lines after the slice — so
+# what the event cap actually buys is bounded WORK: extend() and every
+# detector see at most this many events per request.
+#
+# Peak memory needs the byte bound below, not this one: by the time events are
+# counted, json.loads has already materialised the whole body as Python
+# objects. The earlier comment here claimed "a 10 MB JSON body must not become
+# 10 MB of buffered events", which the event cap alone did not deliver.
+#
+# One constant, imported from provenance, not three copies of 10_000.
+MAX_EVENTS_PER_FLUSH = MAX_EVENTS_PER_SESSION
+
+# Reject an oversized telemetry body before parsing it. This is the bound that
+# actually caps peak RSS per request; 8 MB is far above any real flush (the SDK
+# posts a few hundred events) and far below a memory-pressure payload.
+MAX_TELEMETRY_BODY_BYTES = 8 * 1024 * 1024
 
 # session_key -> reasons already emitted. One CAEP event per session and
 # reason: a challenge that stays in force is one signal, not one per
 # blocked retry.
 caep_emitted: dict[str, set] = {}
 
-_session_counter = itertools.count(1)
 _STORES = (sessions, score, decisions, last_flags, blocks, caep_emitted)
 
 
+def _evict_if_full(key: str) -> None:
+    """Make room for a new session id when the table is full.
+
+    Evicts the oldest-idle session (by last_seen) from every per-session
+    store. Existing keys are never evicted by their own traffic.
+    """
+    if key in sessions or key in last_seen:
+        return
+    if len(last_seen) < MAX_SESSIONS and len(sessions) < MAX_SESSIONS:
+        return
+    oldest = min(last_seen, key=last_seen.get) if last_seen else None
+    if oldest is None:
+        oldest = next(iter(sessions), None)
+    if oldest is None:
+        return
+    last_seen.pop(oldest, None)
+    for store in _STORES:
+        store.pop(oldest, None)
+
+
 def _client_fallback(flow) -> str:
-    """Connection fallback for the session key: request host + client address."""
+    """Connection fallback for the session key: request host + client IP.
+
+    The IP only — peername is (ip, port) and the port is ephemeral, so
+    including it minted a distinct key per TCP connection rather than per
+    client. That made ordinary browsing the dominant source of keys in
+    last_seen and pushed the session table toward its bound for no reason.
+    Coarser is correct here: this is a fallback that stands in for "client"
+    when no cookie exists, and the cookie is the real identity.
+    """
     try:
         host = flow.request.host
     except AttributeError:
@@ -116,6 +169,8 @@ def _client_fallback(flow) -> str:
         addr = flow.client_conn.peername if flow.client_conn is not None else None
     except AttributeError:
         addr = None
+    if isinstance(addr, (tuple, list)) and addr:
+        addr = addr[0]
     return f"{host}|{addr}"
 
 
@@ -153,12 +208,20 @@ def _set_cookie_if_absent(response, flow) -> None:
     """
     if _existing_sid(flow) is not None:
         return
-    sid = new_session_id(next(_session_counter))
+    sid = new_session_id()
     _add_set_cookie(response, sid)
 
 
 def _add_set_cookie(response, sid: str) -> None:
-    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax"
+    # HttpOnly: page JS never reads __cadence_sid (the browser attaches it
+    # automatically), so script access is pure attack surface for fixation.
+    # Verified: cadence-sdk.js does not touch document.cookie.
+    #
+    # No Secure attribute, deliberately: the demo and lab paths are
+    # http://127.0.0.1, and Secure would stop the cookie being set there
+    # at all. Any deployment terminating TLS must add it — without Secure
+    # the sid crosses the network in clear on a downgraded request.
+    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax; HttpOnly"
     add = getattr(response.headers, "add", None)
     if callable(add):
         add("Set-Cookie", set_cookie)
@@ -208,17 +271,29 @@ class CadenceAddon:
         if path == TELEMETRY_PATH:
             self._swallow_telemetry(flow)
             return
+        # Every path below writes per-session state — blocks, caep_emitted,
+        # last_seen — so the table is bounded and the key touched ONCE here,
+        # before dispatch, rather than at one call site.
+        #
+        # Bounding inside _swallow_telemetry only was the review's finding and
+        # it was a real leak: a cookieless form POST takes the block path,
+        # writes blocks[key] and caep_emitted[key], and never enters last_seen.
+        # expire() iterates last_seen, so those keys were never TTL'd and never
+        # evicted. 5000 such POSTs left 5000 permanent entries in each store
+        # with MAX_SESSIONS = 10 — the scanner this PR exists to bound walked
+        # straight past it.
+        key = _flow_session_key(flow)
+        _evict_if_full(key)
+        touch(last_seen, key, now)
         if self._maybe_step_up(flow):
-            key = _flow_session_key(flow)
             blocks[key] = blocks.get(key, 0) + 1
             _emit_caep(key, "step-up")
             return
         if self._enforce_provenance(flow):
-            key = _flow_session_key(flow)
             blocks[key] = blocks.get(key, 0) + 1
             _emit_caep(key, "provenance-unjustified")
             return
-        self._note_malice(flow)
+        self._note_malice(flow, key)
 
     def _serve_console(self, flow):
         """Serve the demo console page. Proxy-owned path, never forwarded."""
@@ -301,16 +376,19 @@ class CadenceAddon:
         else:
             decisions[key] = state["decision"]
 
-    def _note_malice(self, flow) -> None:
-        """Lexical URL+body triage into the walk. Does not 403 by itself."""
+    def _note_malice(self, flow, key: str) -> None:
+        """Lexical URL+body triage into the walk. Does not 403 by itself.
+
+        The key is passed in: request() has already bounded the table and
+        touched last_seen for it. Recomputing and re-touching here was how
+        this path came to be the only one keeping last_seen fed.
+        """
         try:
             url = flow.request.path
         except AttributeError:
             url = ""
         body = getattr(flow.request, "raw_content", None) or b""
         hit = suspicious(url, body)
-        key = _flow_session_key(flow)
-        touch(last_seen, key, time.time())
         if hit:
             self._flag(key, "malice", True)
             _note("malice", key, hit)
@@ -353,9 +431,15 @@ class CadenceAddon:
         upstream server regardless of verb.
         """
         events: list[dict] = []
-        if flow.request.raw_content:
+        raw = flow.request.raw_content
+        # Size-check the bytes BEFORE json.loads: parsing is what allocates,
+        # so a cap applied to the decoded event list cannot bound peak memory.
+        if raw and len(raw) > MAX_TELEMETRY_BODY_BYTES:
+            _note("telemetry-oversize", _flow_session_key(flow), f"{len(raw)}B")
+            raw = None
+        if raw:
             try:
-                payload = json.loads(flow.request.raw_content)
+                payload = json.loads(raw)
                 maybe = payload.get("events") or []
                 # list(1) raises TypeError, and that would error the flow
                 # before the 204 below — turning a garbage payload into a
@@ -368,7 +452,9 @@ class CadenceAddon:
         # beat the first HTML response), the buffer and the newly issued
         # cookie must share one id, or one browser becomes two sessions.
         existing = _existing_sid(flow)
-        key = existing if existing is not None else new_session_id(next(_session_counter))
+        key = existing if existing is not None else new_session_id()
+        if len(events) > MAX_EVENTS_PER_FLUSH:
+            events = events[-MAX_EVENTS_PER_FLUSH:]
         # Detectors run HERE, once per round, on the freshly extended
         # buffer — the only moment new evidence exists. Running them per
         # page request instead re-evaluates the whole buffer every time and
@@ -380,6 +466,7 @@ class CadenceAddon:
         # touch last_seen, or the SDK's idle-tab interval keeps a stolen
         # sid's buffer alive past the TTL forever.
         if events:
+            _evict_if_full(key)
             buffered = sessions.setdefault(key, [])
             buffered.extend(events)
             sessions[key] = cap_session(buffered)
