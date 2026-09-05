@@ -7,7 +7,6 @@ Run via `cadence proxy`, or directly:
 
 from __future__ import annotations
 
-import itertools
 import json
 import sys
 import time
@@ -102,7 +101,6 @@ timeline: list[dict] = []
 # blocked retry.
 caep_emitted: dict[str, set] = {}
 
-_session_counter = itertools.count(1)
 _STORES = (sessions, score, decisions, last_flags, blocks, caep_emitted)
 
 
@@ -153,12 +151,20 @@ def _set_cookie_if_absent(response, flow) -> None:
     """
     if _existing_sid(flow) is not None:
         return
-    sid = new_session_id(next(_session_counter))
+    sid = new_session_id()
     _add_set_cookie(response, sid)
 
 
 def _add_set_cookie(response, sid: str) -> None:
-    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax"
+    # HttpOnly: page JS never reads __cadence_sid (the browser attaches it
+    # automatically), so script access is pure attack surface for fixation.
+    # Verified: cadence-sdk.js does not touch document.cookie.
+    #
+    # No Secure attribute, deliberately: the demo and lab paths are
+    # http://127.0.0.1, and Secure would stop the cookie being set there
+    # at all. Any deployment terminating TLS must add it — without Secure
+    # the sid crosses the network in clear on a downgraded request.
+    set_cookie = f"{SESSION_COOKIE}={sid}; Path=/; SameSite=Lax; HttpOnly"
     add = getattr(response.headers, "add", None)
     if callable(add):
         add("Set-Cookie", set_cookie)
@@ -368,7 +374,7 @@ class CadenceAddon:
         # beat the first HTML response), the buffer and the newly issued
         # cookie must share one id, or one browser becomes two sessions.
         existing = _existing_sid(flow)
-        key = existing if existing is not None else new_session_id(next(_session_counter))
+        key = existing if existing is not None else new_session_id()
         # Detectors run HERE, once per round, on the freshly extended
         # buffer — the only moment new evidence exists. Running them per
         # page request instead re-evaluates the whole buffer every time and
