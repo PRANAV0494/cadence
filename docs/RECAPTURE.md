@@ -20,7 +20,10 @@ Tell the participant, in substance:
 - You are recording **keystroke timings and the characters you type** in
   this demo box, for a student research prototype.
 - Files stay on the experimenter's machine under `data/private/` and are
-  not committed to git.
+  not committed to git. That location plus full-disk encryption is the
+  actual protection — the per-file permission the dump sets is best-effort
+  and does nothing on Windows, so do not promise more than the machine
+  itself provides.
 - You can stop at any time; say so and we delete your file.
 - Do not type a real password or other secrets.
 
@@ -54,8 +57,9 @@ Leave that window running. Participant:
 1. Open http://127.0.0.1:9000/
 2. Type a normal English sentence (not a paste, not a password).
 3. Click **submit** (do not press Enter in the box).
-4. Green "allowed" is a good take. 403 means keystrokes did not reach
-   the proxy — discard that file and retake.
+4. Green "allowed" is a good take. 403 means keystrokes did not reach the
+   proxy — see *Retakes* below; the file is appended to, so a retake does
+   **not** replace the bad take on its own.
 
 Then in another PowerShell, **before the next person**:
 
@@ -71,8 +75,40 @@ Rename-Item .\data\private\recapture\<sid>.jsonl p01.jsonl
 
 Keep the name map off this repo (notebook, paper notes, not git).
 
-Close the form tab (or restart the demo) so the next person is a new
-`__cadence_sid`. Target: 10–20 people, one or two sentences each.
+### Reset the session between participants — this step is load-bearing
+
+Closing the tab is **not** enough, and neither is restarting the demo:
+
+- `__cadence_sid` is set with no `Max-Age`/`Expires`, so it is a browser-session
+  cookie. It survives tab close and outlives `cadence demo`; only a full browser
+  **quit** clears it.
+- The proxy mints a sid only when the request does not already carry one, so
+  restarting `mitmdump` changes nothing — the browser keeps sending the old
+  cookie.
+- `cadence demo` uses your normal browser and launches no profile of its own,
+  so there is nothing that resets itself.
+
+Skip this and participants 2..N append to the **same** `<sid>.jsonl`. The
+rename step then labels one file `p01` while it holds two people, and the dwell
+gate passes the mixture without complaint.
+
+Do one of these before each new participant:
+
+- **Delete the cookie** — DevTools (F12) → Application → Cookies →
+  `http://127.0.0.1:9000` → delete `__cadence_sid`. Fastest.
+- **Quit the browser entirely** — every window, not just the tab.
+
+Then confirm it worked: the next submit must create a **new** file in the dump
+directory. If the newest file's timestamp moved instead of a new one appearing,
+the sid did not rotate — stop and clear the cookie before continuing.
+
+### Retakes
+
+A 403, a paste, a wrong-language sentence: the events are already in that sid's
+file, because the dump appends. To redo a take, reset the session as above
+**and** delete the partial file, then have them type again.
+
+Target: 10–20 people, one or two sentences each.
 
 ## Dwell gate (run before you call it a dataset)
 

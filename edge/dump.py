@@ -9,14 +9,18 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from pathlib import Path
+
+from provenance import MAX_EVENTS_PER_SESSION
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
-# One flush can fill but never exceed what one session holds (same bound as
-# the proxy's per-session cap). Keeps a rogue 10 MB body from becoming a
-# 10 MB file append even before the proxy-side flush cap runs.
-MAX_DUMP_EVENTS = 10_000
+# One flush can fill but never exceed what one session holds. Imported rather
+# than a third hardcoded 10_000 alongside provenance.MAX_EVENTS_PER_SESSION and
+# addon.MAX_EVENTS_PER_FLUSH — three copies documented as "the same bound" is
+# three chances for them to stop being the same.
+MAX_DUMP_EVENTS = MAX_EVENTS_PER_SESSION
 
 
 def dump_dir() -> Path | None:
@@ -43,13 +47,26 @@ def append_flush(session_id: str, events: list[dict], dest: Path | None = None) 
         events = events[-MAX_DUMP_EVENTS:]
     root.mkdir(parents=True, exist_ok=True)
     path = root / filename(session_id)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"events": events}, ensure_ascii=False) + "\n")
+    try:
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"events": events}, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        # A full disk mid-capture used to pass silently, and the operator
+        # would find the gap at analysis time. The rest of the addon reports
+        # to stderr; do the same rather than swallow.
+        print(f"cadence: telemetry dump failed for {path}: {exc}", file=sys.stderr)
+        return None
     # Dumps inherit whole-document key/code including password boxes (see
-    # docs/RECAPTURE.md consent). Restrict new files best-effort; the lab
-    # dir itself must still live under gitignored data/private/.
+    # docs/RECAPTURE.md consent).
+    #
+    # This is genuinely best-effort and on the documented target platform it
+    # is close to nothing: the recapture procedure is PowerShell, and on
+    # Windows os.chmod only toggles the read-only bit — it grants no ACL
+    # protection against other users. The real controls are the gitignored
+    # data/private/ location and full-disk encryption, which is what
+    # docs/RECAPTURE.md tells participants.
     try:
         os.chmod(path, 0o600)
-    except OSError:
-        pass
+    except OSError as exc:
+        print(f"cadence: could not restrict {path}: {exc}", file=sys.stderr)
     return path

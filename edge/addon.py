@@ -25,8 +25,8 @@ from console import (  # noqa: E402
     replace_state_path,
     snapshot,
 )
-from dump import append_flush  # noqa: E402
 from drift import drift_signal  # noqa: E402
+from dump import append_flush  # noqa: E402
 from fusion import update as fusion_update  # noqa: E402
 from inject import csp_hashes, inject, is_html  # noqa: E402
 from malice import suspicious  # noqa: E402
